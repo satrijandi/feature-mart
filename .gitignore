@@ -1,0 +1,33 @@
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+
+# dbt
+transform/target/
+transform/dbt_packages/
+transform/logs/
+transform/.user.yml
+
+# Local warehouse. The pipeline is reproducible from the seed plus `make
+# dbt-backfill`, so the database file itself is never committed.
+transform/warehouse.duckdb
+transform/warehouse.duckdb.wal
+
+# Airflow
+.airflow/
+airflow.db
+airflow.cfg
+webserver_config.py
+
+# Jupyter
+.ipynb_checkpoints/
+
+# OS
+.DS_Store
+
+# Generated fixture -- rebuild deterministically with `python tools/gen_seed.py`
+transform/seeds/customer_journal_login.csv

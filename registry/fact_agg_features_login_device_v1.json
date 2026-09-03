@@ -1,0 +1,783 @@
+{
+  "feature_name": "fact_agg_features_login_device_v1",
+  "spec_version": "7e3c413228a7",
+  "feature_type": "daily",
+  "owner": "i.putra",
+  "description": "Device and session diversity features off the same login journal.\nExists mainly to exercise the approximate distinct-count path: event_id has\none value per event, so its per-customer cardinality grows without bound and\nretaining the full key set would not scale.",
+  "generated_at": "generated-on-demand",
+  "generator_version": "0.1.0",
+  "entities": [
+    "safe_id"
+  ],
+  "timestamp_col": "event_timestamp",
+  "sources": [
+    {
+      "literal": "bronze.backend_ddb.customer_journal_login",
+      "dbt_source": "bronze_backend_ddb",
+      "dbt_table": "customer_journal_login"
+    }
+  ],
+  "settings": {
+    "window_convention": "inclusive",
+    "entity_spine": "all_time",
+    "late_arrival_days": 3,
+    "kmv_k": 64,
+    "separator": "_",
+    "source_is_append_only": true,
+    "materialized_mart": "incremental",
+    "target_dialects": [
+      "duckdb",
+      "databricks",
+      "snowflake"
+    ]
+  },
+  "models": {
+    "staging": "stg_fact_agg_features_login_device_v1",
+    "daily_partials": "int_fact_agg_features_login_device_v1__daily_partials",
+    "window_rollup": "int_fact_agg_features_login_device_v1__window_rollup",
+    "alltime_state": "int_fact_agg_features_login_device_v1__alltime_state",
+    "alltime_recent": "int_fact_agg_features_login_device_v1__alltime_recent",
+    "mart": "fact_agg_features_login_device_v1"
+  },
+  "expansion": {
+    "atomic_fields": 3,
+    "condition_categories": {
+      "login_status": [
+        "default",
+        "is_login_success",
+        "is_login_failed"
+      ]
+    },
+    "time_windows": [
+      "l7d",
+      "l30d",
+      "all_time"
+    ],
+    "partial_columns": 12,
+    "stored_features": 36,
+    "computed_features": 0,
+    "total_features": 36
+  },
+  "features": [
+    {
+      "name": "count_event_id_l7d",
+      "dtype": "bigint",
+      "atomic_field": "event_id",
+      "agg": "count",
+      "window": "l7d",
+      "window_days": 7,
+      "conditions": {
+        "login_status": "default"
+      },
+      "is_marginal": true,
+      "materialisation": "stored",
+      "computed_kind": null,
+      "inputs": [
+        "p_count_event_id"
+      ],
+      "distinct_method": null,
+      "nullable": false,
+      "description": "count of event_id for all rows over the 7 days ending on the as-of date (inclusive)"
+    },
+    {
+      "name": "count_event_id_l30d",
+      "dtype": "bigint",
+      "atomic_field": "event_id",
+      "agg": "count",
+      "window": "l30d",
+      "window_days": 30,
+      "conditions": {
+        "login_status": "default"
+      },
+      "is_marginal": true,
+      "materialisation": "stored",
+      "computed_kind": null,
+      "inputs": [
+        "p_count_event_id"
+      ],
+      "distinct_method": null,
+      "nullable": false,
+      "description": "count of event_id for all rows over the 30 days ending on the as-of date (inclusive)"
+    },
+    {
+      "name": "count_event_id_all_time",
+      "dtype": "bigint",
+      "atomic_field": "event_id",
+      "agg": "count",
+      "window": "all_time",
+      "window_days": null,
+      "conditions": {
+        "login_status": "default"
+      },
+      "is_marginal": true,
+      "materialisation": "stored",
+      "computed_kind": null,
+      "inputs": [
+        "p_count_event_id"
+      ],
+      "distinct_method": null,
+      "nullable": false,
+      "description": "count of event_id for all rows over all history up to and including the as-of date"
+    },
+    {
+      "name": "count_event_id_is_login_success_l7d",
+      "dtype": "bigint",
+      "atomic_field": "event_id",
+      "agg": "count",
+      "window": "l7d",
+      "window_days": 7,
+      "conditions": {
+        "login_status": "is_login_success"
+      },
+      "is_marginal": false,
+      "materialisation": "stored",
+      "computed_kind": null,
+      "inputs": [
+        "p_count_event_id_is_login_success"
+      ],
+      "distinct_method": null,
+      "nullable": false,
+      "description": "count of event_id for login_status=is_login_success over the 7 days ending on the as-of date (inclusive)"
+    },
+    {
+      "name": "count_event_id_is_login_success_l30d",
+      "dtype": "bigint",
+      "atomic_field": "event_id",
+      "agg": "count",
+      "window": "l30d",
+      "window_days": 30,
+      "conditions": {
+        "login_status": "is_login_success"
+      },
+      "is_marginal": false,
+      "materialisation": "stored",
+      "computed_kind": null,
+      "inputs": [
+        "p_count_event_id_is_login_success"
+      ],
+      "distinct_method": null,
+      "nullable": false,
+      "description": "count of event_id for login_status=is_login_success over the 30 days ending on the as-of date (inclusive)"
+    },
+    {
+      "name": "count_event_id_is_login_success_all_time",
+      "dtype": "bigint",
+      "atomic_field": "event_id",
+      "agg": "count",
+      "window": "all_time",
+      "window_days": null,
+      "conditions": {
+        "login_status": "is_login_success"
+      },
+      "is_marginal": false,
+      "materialisation": "stored",
+      "computed_kind": null,
+      "inputs": [
+        "p_count_event_id_is_login_success"
+      ],
+      "distinct_method": null,
+      "nullable": false,
+      "description": "count of event_id for login_status=is_login_success over all history up to and including the as-of date"
+    },
+    {
+      "name": "count_event_id_is_login_failed_l7d",
+      "dtype": "bigint",
+      "atomic_field": "event_id",
+      "agg": "count",
+      "window": "l7d",
+      "window_days": 7,
+      "conditions": {
+        "login_status": "is_login_failed"
+      },
+      "is_marginal": false,
+      "materialisation": "stored",
+      "computed_kind": null,
+      "inputs": [
+        "p_count_event_id_is_login_failed"
+      ],
+      "distinct_method": null,
+      "nullable": false,
+      "description": "count of event_id for login_status=is_login_failed over the 7 days ending on the as-of date (inclusive)"
+    },
+    {
+      "name": "count_event_id_is_login_failed_l30d",
+      "dtype": "bigint",
+      "atomic_field": "event_id",
+      "agg": "count",
+      "window": "l30d",
+      "window_days": 30,
+      "conditions": {
+        "login_status": "is_login_failed"
+      },
+      "is_marginal": false,
+      "materialisation": "stored",
+      "computed_kind": null,
+      "inputs": [
+        "p_count_event_id_is_login_failed"
+      ],
+      "distinct_method": null,
+      "nullable": false,
+      "description": "count of event_id for login_status=is_login_failed over the 30 days ending on the as-of date (inclusive)"
+    },
+    {
+      "name": "count_event_id_is_login_failed_all_time",
+      "dtype": "bigint",
+      "atomic_field": "event_id",
+      "agg": "count",
+      "window": "all_time",
+      "window_days": null,
+      "conditions": {
+        "login_status": "is_login_failed"
+      },
+      "is_marginal": false,
+      "materialisation": "stored",
+      "computed_kind": null,
+      "inputs": [
+        "p_count_event_id_is_login_failed"
+      ],
+      "distinct_method": null,
+      "nullable": false,
+      "description": "count of event_id for login_status=is_login_failed over all history up to and including the as-of date"
+    },
+    {
+      "name": "count_distinct_event_id_l7d",
+      "dtype": "bigint",
+      "atomic_field": "event_id",
+      "agg": "count_distinct",
+      "window": "l7d",
+      "window_days": 7,
+      "conditions": {
+        "login_status": "default"
+      },
+      "is_marginal": true,
+      "materialisation": "stored",
+      "computed_kind": null,
+      "inputs": [
+        "p_count_distinct_event_id"
+      ],
+      "distinct_method": "approx",
+      "nullable": false,
+      "description": "count_distinct of event_id for all rows over the 7 days ending on the as-of date (inclusive)"
+    },
+    {
+      "name": "count_distinct_event_id_l30d",
+      "dtype": "bigint",
+      "atomic_field": "event_id",
+      "agg": "count_distinct",
+      "window": "l30d",
+      "window_days": 30,
+      "conditions": {
+        "login_status": "default"
+      },
+      "is_marginal": true,
+      "materialisation": "stored",
+      "computed_kind": null,
+      "inputs": [
+        "p_count_distinct_event_id"
+      ],
+      "distinct_method": "approx",
+      "nullable": false,
+      "description": "count_distinct of event_id for all rows over the 30 days ending on the as-of date (inclusive)"
+    },
+    {
+      "name": "count_distinct_event_id_all_time",
+      "dtype": "bigint",
+      "atomic_field": "event_id",
+      "agg": "count_distinct",
+      "window": "all_time",
+      "window_days": null,
+      "conditions": {
+        "login_status": "default"
+      },
+      "is_marginal": true,
+      "materialisation": "stored",
+      "computed_kind": null,
+      "inputs": [
+        "p_count_distinct_event_id"
+      ],
+      "distinct_method": "approx",
+      "nullable": false,
+      "description": "count_distinct of event_id for all rows over all history up to and including the as-of date"
+    },
+    {
+      "name": "count_distinct_event_id_is_login_success_l7d",
+      "dtype": "bigint",
+      "atomic_field": "event_id",
+      "agg": "count_distinct",
+      "window": "l7d",
+      "window_days": 7,
+      "conditions": {
+        "login_status": "is_login_success"
+      },
+      "is_marginal": false,
+      "materialisation": "stored",
+      "computed_kind": null,
+      "inputs": [
+        "p_count_distinct_event_id_is_login_success"
+      ],
+      "distinct_method": "approx",
+      "nullable": false,
+      "description": "count_distinct of event_id for login_status=is_login_success over the 7 days ending on the as-of date (inclusive)"
+    },
+    {
+      "name": "count_distinct_event_id_is_login_success_l30d",
+      "dtype": "bigint",
+      "atomic_field": "event_id",
+      "agg": "count_distinct",
+      "window": "l30d",
+      "window_days": 30,
+      "conditions": {
+        "login_status": "is_login_success"
+      },
+      "is_marginal": false,
+      "materialisation": "stored",
+      "computed_kind": null,
+      "inputs": [
+        "p_count_distinct_event_id_is_login_success"
+      ],
+      "distinct_method": "approx",
+      "nullable": false,
+      "description": "count_distinct of event_id for login_status=is_login_success over the 30 days ending on the as-of date (inclusive)"
+    },
+    {
+      "name": "count_distinct_event_id_is_login_success_all_time",
+      "dtype": "bigint",
+      "atomic_field": "event_id",
+      "agg": "count_distinct",
+      "window": "all_time",
+      "window_days": null,
+      "conditions": {
+        "login_status": "is_login_success"
+      },
+      "is_marginal": false,
+      "materialisation": "stored",
+      "computed_kind": null,
+      "inputs": [
+        "p_count_distinct_event_id_is_login_success"
+      ],
+      "distinct_method": "approx",
+      "nullable": false,
+      "description": "count_distinct of event_id for login_status=is_login_success over all history up to and including the as-of date"
+    },
+    {
+      "name": "count_distinct_event_id_is_login_failed_l7d",
+      "dtype": "bigint",
+      "atomic_field": "event_id",
+      "agg": "count_distinct",
+      "window": "l7d",
+      "window_days": 7,
+      "conditions": {
+        "login_status": "is_login_failed"
+      },
+      "is_marginal": false,
+      "materialisation": "stored",
+      "computed_kind": null,
+      "inputs": [
+        "p_count_distinct_event_id_is_login_failed"
+      ],
+      "distinct_method": "approx",
+      "nullable": false,
+      "description": "count_distinct of event_id for login_status=is_login_failed over the 7 days ending on the as-of date (inclusive)"
+    },
+    {
+      "name": "count_distinct_event_id_is_login_failed_l30d",
+      "dtype": "bigint",
+      "atomic_field": "event_id",
+      "agg": "count_distinct",
+      "window": "l30d",
+      "window_days": 30,
+      "conditions": {
+        "login_status": "is_login_failed"
+      },
+      "is_marginal": false,
+      "materialisation": "stored",
+      "computed_kind": null,
+      "inputs": [
+        "p_count_distinct_event_id_is_login_failed"
+      ],
+      "distinct_method": "approx",
+      "nullable": false,
+      "description": "count_distinct of event_id for login_status=is_login_failed over the 30 days ending on the as-of date (inclusive)"
+    },
+    {
+      "name": "count_distinct_event_id_is_login_failed_all_time",
+      "dtype": "bigint",
+      "atomic_field": "event_id",
+      "agg": "count_distinct",
+      "window": "all_time",
+      "window_days": null,
+      "conditions": {
+        "login_status": "is_login_failed"
+      },
+      "is_marginal": false,
+      "materialisation": "stored",
+      "computed_kind": null,
+      "inputs": [
+        "p_count_distinct_event_id_is_login_failed"
+      ],
+      "distinct_method": "approx",
+      "nullable": false,
+      "description": "count_distinct of event_id for login_status=is_login_failed over all history up to and including the as-of date"
+    },
+    {
+      "name": "count_distinct_device_id_l7d",
+      "dtype": "bigint",
+      "atomic_field": "device_id",
+      "agg": "count_distinct",
+      "window": "l7d",
+      "window_days": 7,
+      "conditions": {
+        "login_status": "default"
+      },
+      "is_marginal": true,
+      "materialisation": "stored",
+      "computed_kind": null,
+      "inputs": [
+        "p_count_distinct_device_id"
+      ],
+      "distinct_method": "exact",
+      "nullable": false,
+      "description": "count_distinct of device_id for all rows over the 7 days ending on the as-of date (inclusive)"
+    },
+    {
+      "name": "count_distinct_device_id_l30d",
+      "dtype": "bigint",
+      "atomic_field": "device_id",
+      "agg": "count_distinct",
+      "window": "l30d",
+      "window_days": 30,
+      "conditions": {
+        "login_status": "default"
+      },
+      "is_marginal": true,
+      "materialisation": "stored",
+      "computed_kind": null,
+      "inputs": [
+        "p_count_distinct_device_id"
+      ],
+      "distinct_method": "exact",
+      "nullable": false,
+      "description": "count_distinct of device_id for all rows over the 30 days ending on the as-of date (inclusive)"
+    },
+    {
+      "name": "count_distinct_device_id_all_time",
+      "dtype": "bigint",
+      "atomic_field": "device_id",
+      "agg": "count_distinct",
+      "window": "all_time",
+      "window_days": null,
+      "conditions": {
+        "login_status": "default"
+      },
+      "is_marginal": true,
+      "materialisation": "stored",
+      "computed_kind": null,
+      "inputs": [
+        "p_count_distinct_device_id"
+      ],
+      "distinct_method": "exact",
+      "nullable": false,
+      "description": "count_distinct of device_id for all rows over all history up to and including the as-of date"
+    },
+    {
+      "name": "count_distinct_device_id_is_login_success_l7d",
+      "dtype": "bigint",
+      "atomic_field": "device_id",
+      "agg": "count_distinct",
+      "window": "l7d",
+      "window_days": 7,
+      "conditions": {
+        "login_status": "is_login_success"
+      },
+      "is_marginal": false,
+      "materialisation": "stored",
+      "computed_kind": null,
+      "inputs": [
+        "p_count_distinct_device_id_is_login_success"
+      ],
+      "distinct_method": "exact",
+      "nullable": false,
+      "description": "count_distinct of device_id for login_status=is_login_success over the 7 days ending on the as-of date (inclusive)"
+    },
+    {
+      "name": "count_distinct_device_id_is_login_success_l30d",
+      "dtype": "bigint",
+      "atomic_field": "device_id",
+      "agg": "count_distinct",
+      "window": "l30d",
+      "window_days": 30,
+      "conditions": {
+        "login_status": "is_login_success"
+      },
+      "is_marginal": false,
+      "materialisation": "stored",
+      "computed_kind": null,
+      "inputs": [
+        "p_count_distinct_device_id_is_login_success"
+      ],
+      "distinct_method": "exact",
+      "nullable": false,
+      "description": "count_distinct of device_id for login_status=is_login_success over the 30 days ending on the as-of date (inclusive)"
+    },
+    {
+      "name": "count_distinct_device_id_is_login_success_all_time",
+      "dtype": "bigint",
+      "atomic_field": "device_id",
+      "agg": "count_distinct",
+      "window": "all_time",
+      "window_days": null,
+      "conditions": {
+        "login_status": "is_login_success"
+      },
+      "is_marginal": false,
+      "materialisation": "stored",
+      "computed_kind": null,
+      "inputs": [
+        "p_count_distinct_device_id_is_login_success"
+      ],
+      "distinct_method": "exact",
+      "nullable": false,
+      "description": "count_distinct of device_id for login_status=is_login_success over all history up to and including the as-of date"
+    },
+    {
+      "name": "count_distinct_device_id_is_login_failed_l7d",
+      "dtype": "bigint",
+      "atomic_field": "device_id",
+      "agg": "count_distinct",
+      "window": "l7d",
+      "window_days": 7,
+      "conditions": {
+        "login_status": "is_login_failed"
+      },
+      "is_marginal": false,
+      "materialisation": "stored",
+      "computed_kind": null,
+      "inputs": [
+        "p_count_distinct_device_id_is_login_failed"
+      ],
+      "distinct_method": "exact",
+      "nullable": false,
+      "description": "count_distinct of device_id for login_status=is_login_failed over the 7 days ending on the as-of date (inclusive)"
+    },
+    {
+      "name": "count_distinct_device_id_is_login_failed_l30d",
+      "dtype": "bigint",
+      "atomic_field": "device_id",
+      "agg": "count_distinct",
+      "window": "l30d",
+      "window_days": 30,
+      "conditions": {
+        "login_status": "is_login_failed"
+      },
+      "is_marginal": false,
+      "materialisation": "stored",
+      "computed_kind": null,
+      "inputs": [
+        "p_count_distinct_device_id_is_login_failed"
+      ],
+      "distinct_method": "exact",
+      "nullable": false,
+      "description": "count_distinct of device_id for login_status=is_login_failed over the 30 days ending on the as-of date (inclusive)"
+    },
+    {
+      "name": "count_distinct_device_id_is_login_failed_all_time",
+      "dtype": "bigint",
+      "atomic_field": "device_id",
+      "agg": "count_distinct",
+      "window": "all_time",
+      "window_days": null,
+      "conditions": {
+        "login_status": "is_login_failed"
+      },
+      "is_marginal": false,
+      "materialisation": "stored",
+      "computed_kind": null,
+      "inputs": [
+        "p_count_distinct_device_id_is_login_failed"
+      ],
+      "distinct_method": "exact",
+      "nullable": false,
+      "description": "count_distinct of device_id for login_status=is_login_failed over all history up to and including the as-of date"
+    },
+    {
+      "name": "count_distinct_login_source_l7d",
+      "dtype": "bigint",
+      "atomic_field": "login_source",
+      "agg": "count_distinct",
+      "window": "l7d",
+      "window_days": 7,
+      "conditions": {
+        "login_status": "default"
+      },
+      "is_marginal": true,
+      "materialisation": "stored",
+      "computed_kind": null,
+      "inputs": [
+        "p_count_distinct_login_source"
+      ],
+      "distinct_method": "exact",
+      "nullable": false,
+      "description": "count_distinct of login_source for all rows over the 7 days ending on the as-of date (inclusive)"
+    },
+    {
+      "name": "count_distinct_login_source_l30d",
+      "dtype": "bigint",
+      "atomic_field": "login_source",
+      "agg": "count_distinct",
+      "window": "l30d",
+      "window_days": 30,
+      "conditions": {
+        "login_status": "default"
+      },
+      "is_marginal": true,
+      "materialisation": "stored",
+      "computed_kind": null,
+      "inputs": [
+        "p_count_distinct_login_source"
+      ],
+      "distinct_method": "exact",
+      "nullable": false,
+      "description": "count_distinct of login_source for all rows over the 30 days ending on the as-of date (inclusive)"
+    },
+    {
+      "name": "count_distinct_login_source_all_time",
+      "dtype": "bigint",
+      "atomic_field": "login_source",
+      "agg": "count_distinct",
+      "window": "all_time",
+      "window_days": null,
+      "conditions": {
+        "login_status": "default"
+      },
+      "is_marginal": true,
+      "materialisation": "stored",
+      "computed_kind": null,
+      "inputs": [
+        "p_count_distinct_login_source"
+      ],
+      "distinct_method": "exact",
+      "nullable": false,
+      "description": "count_distinct of login_source for all rows over all history up to and including the as-of date"
+    },
+    {
+      "name": "count_distinct_login_source_is_login_success_l7d",
+      "dtype": "bigint",
+      "atomic_field": "login_source",
+      "agg": "count_distinct",
+      "window": "l7d",
+      "window_days": 7,
+      "conditions": {
+        "login_status": "is_login_success"
+      },
+      "is_marginal": false,
+      "materialisation": "stored",
+      "computed_kind": null,
+      "inputs": [
+        "p_count_distinct_login_source_is_login_success"
+      ],
+      "distinct_method": "exact",
+      "nullable": false,
+      "description": "count_distinct of login_source for login_status=is_login_success over the 7 days ending on the as-of date (inclusive)"
+    },
+    {
+      "name": "count_distinct_login_source_is_login_success_l30d",
+      "dtype": "bigint",
+      "atomic_field": "login_source",
+      "agg": "count_distinct",
+      "window": "l30d",
+      "window_days": 30,
+      "conditions": {
+        "login_status": "is_login_success"
+      },
+      "is_marginal": false,
+      "materialisation": "stored",
+      "computed_kind": null,
+      "inputs": [
+        "p_count_distinct_login_source_is_login_success"
+      ],
+      "distinct_method": "exact",
+      "nullable": false,
+      "description": "count_distinct of login_source for login_status=is_login_success over the 30 days ending on the as-of date (inclusive)"
+    },
+    {
+      "name": "count_distinct_login_source_is_login_success_all_time",
+      "dtype": "bigint",
+      "atomic_field": "login_source",
+      "agg": "count_distinct",
+      "window": "all_time",
+      "window_days": null,
+      "conditions": {
+        "login_status": "is_login_success"
+      },
+      "is_marginal": false,
+      "materialisation": "stored",
+      "computed_kind": null,
+      "inputs": [
+        "p_count_distinct_login_source_is_login_success"
+      ],
+      "distinct_method": "exact",
+      "nullable": false,
+      "description": "count_distinct of login_source for login_status=is_login_success over all history up to and including the as-of date"
+    },
+    {
+      "name": "count_distinct_login_source_is_login_failed_l7d",
+      "dtype": "bigint",
+      "atomic_field": "login_source",
+      "agg": "count_distinct",
+      "window": "l7d",
+      "window_days": 7,
+      "conditions": {
+        "login_status": "is_login_failed"
+      },
+      "is_marginal": false,
+      "materialisation": "stored",
+      "computed_kind": null,
+      "inputs": [
+        "p_count_distinct_login_source_is_login_failed"
+      ],
+      "distinct_method": "exact",
+      "nullable": false,
+      "description": "count_distinct of login_source for login_status=is_login_failed over the 7 days ending on the as-of date (inclusive)"
+    },
+    {
+      "name": "count_distinct_login_source_is_login_failed_l30d",
+      "dtype": "bigint",
+      "atomic_field": "login_source",
+      "agg": "count_distinct",
+      "window": "l30d",
+      "window_days": 30,
+      "conditions": {
+        "login_status": "is_login_failed"
+      },
+      "is_marginal": false,
+      "materialisation": "stored",
+      "computed_kind": null,
+      "inputs": [
+        "p_count_distinct_login_source_is_login_failed"
+      ],
+      "distinct_method": "exact",
+      "nullable": false,
+      "description": "count_distinct of login_source for login_status=is_login_failed over the 30 days ending on the as-of date (inclusive)"
+    },
+    {
+      "name": "count_distinct_login_source_is_login_failed_all_time",
+      "dtype": "bigint",
+      "atomic_field": "login_source",
+      "agg": "count_distinct",
+      "window": "all_time",
+      "window_days": null,
+      "conditions": {
+        "login_status": "is_login_failed"
+      },
+      "is_marginal": false,
+      "materialisation": "stored",
+      "computed_kind": null,
+      "inputs": [
+        "p_count_distinct_login_source_is_login_failed"
+      ],
+      "distinct_method": "exact",
+      "nullable": false,
+      "description": "count_distinct of login_source for login_status=is_login_failed over all history up to and including the as-of date"
+    }
+  ]
+}

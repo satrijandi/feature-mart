@@ -1,0 +1,41 @@
+name: "feature_mart"
+version: "0.1.0"
+config-version: 2
+
+profile: "feature_mart"
+
+model-paths: ["models"]
+macro-paths: ["macros"]
+seed-paths: ["seeds"]
+test-paths: ["tests"]
+target-path: "target"
+clean-targets: ["target", "dbt_packages"]
+
+# `target_date` is the as-of date every feature is computed for. Airflow passes
+# the logical date here. There is deliberately no default: a silent wrong date
+# is the worst failure mode in a point-in-time feature store.
+vars:
+  target_date: ""
+  fs_kmv_k: 256
+
+models:
+  feature_mart:
+    +persist_docs:
+      relation: true
+      columns: true
+    staging:
+      +materialized: view
+      +schema: staging
+    intermediate:
+      +schema: intermediate
+    marts:
+      +schema: marts
+
+seeds:
+  feature_mart:
+    +schema: bronze_backend_ddb
+    customer_journal_login:
+      +column_types:
+        event_timestamp: timestamp
+        _scd_valid_from: timestamp
+        _scd_valid_to: timestamp

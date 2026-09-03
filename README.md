@@ -1,0 +1,286 @@
+# feature-mart
+
+A config-driven feature store datamart.
+One YAML spec compiles into a complete dbt project: staging, a reusable partial-aggregate layer, window roll-ups, an incremental `all_time` accumulator, a wide published mart, column-level documentation, a machine-readable feature registry, and over a thousand generated invariant tests.
+
+The spec in `features/fact_agg_features_login_history_v2.yml` expands to **480 features** backed by **96 stored columns per entity-day**.
+
+```
+features/*.yml          <-- the only file a human edits
+      |  make generate
+      v
+transform/models/       generated dbt models      (committed, drift-checked)
+transform/tests/        generated invariants      (committed, drift-checked)
+registry/*.json         machine-readable contract (committed, drift-checked)
+orchestration/dags/     Airflow DAG derived from the registry
+```
+
+## Why it is built this way
+
+A feature store fails in a specific, expensive way: it produces numbers that look right.
+A window off by one day, an `all_time` counter that double-counts on a retry, a feature that quietly sees past its own as-of date - none of these throw an error.
+They ship into a model, score well offline, and collapse in production.
+
+Every significant decision here is aimed at making those failures impossible to express, or loud when they happen.
+
+## How the combinatorics work
+
+Each atomic field declares which condition categories apply to it.
+Those categories are crossed with each other, then with the aggregations, then with the time windows.
+
+| atomic field | condition combos | x windows | x aggs | features |
+|---|--:|--:|--:|--:|
+| `event_id` | 3 x 4 x 5 = 60 | 4 | 1 | 240 |
+| `device_id` | 3 x 4 = 12 | 4 | 1 | 48 |
+| `event_timestamp` | 12 | 4 | 2 | 96 |
+| `days_since_login` | 12 | 4 | 2 | 96 |
+| | | | **total** | **480** |
+
+The `default: "TRUE"` member in every category is what makes this work.
+It puts the marginal (uncut) features inside the same cross-product instead of needing a special case, so `count_event_id_l7d` and `count_event_id_is_login_success_is_ios_is_late_night_l7d` come from one code path.
+
+Run `make explain` to see the expansion for any spec.
+
+## The core idea: one fold, many windows
+
+Every aggregation is defined as a commutative monoid over a partial state:
+
+```
+partial   : source rows   -> state    one state per entity, per event_date
+state_agg : many states   -> state    roll a range of days up
+merge     : state, state  -> state    fold sealed history into a fresh tail
+finalize  : state         -> value    what the mart publishes
+```
+
+A bounded window is exactly `finalize(state_agg(days in window))`.
+`all_time` is exactly `finalize(merge(sealed_state, state_agg(unsealed tail)))`.
+
+There is no second code path, so `l30d` and `all_time` **cannot** drift apart - they are the same fold over different ranges.
+Adding an aggregation means implementing four small methods in `generator/aggregates.py`; it does not mean touching the templates, the mart, or the orchestration.
+
+This is also what makes the cost sane.
+Reading a day of source once produces state that every window reuses, so adding `l60d` and `l90d` to the spec costs no extra source reads.
+
+## The decisions that shaped it
+
+### Reusable daily partials, not per-window recomputation
+
+`int_<name>__daily_partials` holds composable state at entity x event_date, and every window folds over it.
+The alternative - rescanning raw source per window - re-reads the same days once per window and makes `all_time` cost grow without bound.
+
+### `all_time` is a sealed accumulator with an unsealed tail
+
+The accumulator folds in only event_dates at or before `target_date - late_arrival_days`.
+More recent days may still receive late-arriving events and get rewritten, so the mart completes `all_time` by merging the sealed state with the unsealed tail **using the same merge function**.
+The published number is never stale, and late events still land on the day they happened.
+
+The consumed range is `(stored watermark, seal date]`, not "yesterday".
+Two properties follow, and both are tested:
+
+- **Retries are idempotent.** A repeated run consumes an empty range and changes nothing.
+  Without this, a retried task silently double-counts every `all_time` feature.
+- **Gaps self-heal.** A run following a missed day absorbs the gap on its own, with no operator involved.
+
+### Runs are not guaranteed to arrive in order
+
+This turned out to be the sharpest edge in the whole design, and three separate
+invariants exist because of it.
+Each was found by an end-to-end scenario, not by reasoning, and each is now a test.
+
+Every run sees the source *as of its own* `target_date`.
+That makes a forward-only sequence trivially correct and every other sequence subtly wrong.
+
+**1. Stored partials may only ever gain information.**
+Replaying a past date would recompute an already-complete day under a narrower view and silently drop events a later run had captured.
+The partial layer stamps `_computed_for` and refuses to recompute any `event_date` already written under a later as-of date.
+
+**2. The rewrite window is anchored to the last run that actually happened.**
+A window measured from today steps straight over days that were still inside their late-arrival window when the last run occurred.
+Skipping one day would lose those events permanently, with nothing to signal it.
+Taking the earlier of `last_run` and `target_date` makes the partial layer self-heal across a gap, exactly as the accumulator does.
+
+**3. The unsealed tail starts at the accumulator's real watermark.**
+`target_date - late_arrival_days` and the watermark coincide on an ordinary forward run and diverge on a replay, where the watermark sits *ahead*.
+A target-derived tail would then re-add days the accumulator already holds and double-count every `all_time` feature.
+Anchoring to the watermark makes sealed and unsealed complementary by construction, in any order.
+
+**4. As-of dates must be served in order, and the build refuses when they are not.**
+The accumulator stores `_state_as_of_date = W` having folded in exactly the event_dates `<= W`, so serving an as-of date `T` requires `W <= T`.
+An in-order run satisfies this automatically, leaving `W = T - late_arrival_days`.
+If `W` moves ahead of the date being served, the sealed fold already holds events that partition must not see; the excess is inside the fold rather than beside it, and no tail can subtract it.
+A generated test fails the build rather than publishing numbers that look plausible and score well offline, and the publisher re-checks the partition independently before writing anything to object storage.
+The remedy is a one-line reset: `dbt run --full-refresh --select int_<name>__alltime_state --vars 'target_date: <date>'`.
+
+The same rule bounds the revision window from below, which is the part that is easy to get backwards.
+A partition dated before the watermark is **final** - its own late-arrival window closed before the seal - so rebuilding it would fold sealed state that postdates it into its `all_time` features.
+`tools/revision_window.py` resolves the refreshable set to `[max(W, T - late_arrival_days), T - 1]` and both the DAG and `make dbt-revise` take their dates from it, so the rule has one home and is unit-tested directly.
+
+Guarding the write is not the same as guarding the store, either.
+The publisher refuses to write a leaking partition, but a store accumulates: partitions written by an earlier build or a buggier branch are still what a training pipeline reads.
+`make audit` checks the published Parquet as a consumer sees it and `make audit-fix` republishes anything that violates its contract.
+
+The accumulator writes only entities with activity in the range it consumes, which keeps write volume proportional to activity rather than to population.
+One consequence is worth knowing: across a range with no events at all, nothing is written and the watermark does not move.
+That is accurate rather than stuck - the state really is sealed only through the old watermark - and the next run with data consumes the wider range.
+The watermark therefore tracks the last day that had events, not the last day attempted.
+
+### A partition is provisional until its late-arrival window closes
+
+The partial layer keeps absorbing late events for `late_arrival_days`, which means a mart built on day *T* has stale inputs until day *T + late_arrival_days*.
+Rewriting only today's partition is therefore not enough.
+Each run republishes the preceding `late_arrival_days` partitions as well as its own; because every model is idempotent for a given as-of date, this is a refresh rather than a rewrite of history.
+
+A partition is **provisional** inside its window and **final** afterwards, and the brute-force verifier holds the pipeline to exactly that contract rather than to a stricter one it never promised.
+
+The revision window and the ordering rule are compatible rather than in tension, which is worth stating because it is easy to get backwards: an in-order run leaves the watermark at `T - late_arrival_days`, so every date the window rebuilds is at or after it.
+Both are covered by scenarios, in both directions - the window's rebuilds are verified exact, and a date behind the watermark is verified to fail.
+
+### As-of-date-dependent columns are removed, not merely ignored
+
+`days_since_login` is `DATEDIFF(DAY, event_timestamp, target_date)`.
+Its value changes every day, so storing it in the partial layer would silently invalidate every stored partial the next morning.
+
+The generator detects this shape, **removes the expression from the staging projection entirely**, and rebuilds the feature in the mart from stored timestamps:
+
+```
+min(days_since_login) = target_date - max(event_timestamp)   -- flips the aggregation
+max(days_since_login) = target_date - min(event_timestamp)
+```
+
+This is exact, keeps the partials reusable, and needs no change to the original spec - the derivation is inferred.
+A target_date-dependent column the generator cannot interpret is a **hard error** with instructions, never a silent guess.
+
+### Exact and approximate distinct, chosen per field
+
+`count_distinct` is the one aggregation that cannot be summed from daily partials.
+
+- `distinct_method: exact` retains the actual key set.
+  Right for `device_id`: a customer owns a handful of devices, so the set is small and worth having exactly.
+- `distinct_method: approx` uses a **KMV sketch** - fixed-size, mergeable, and built entirely from array primitives, so one implementation runs identically on DuckDB, Databricks and Snowflake.
+
+Native HLL was rejected deliberately.
+Databricks and Snowflake both have it; DuckDB exposes no mergeable sketch state, and the three binary formats are mutually unreadable.
+That would mean the local stack could not reproduce production's numbers, which defeats the purpose of having a local stack.
+
+Measured on the fixture (`make kmv`): exact below k, mean error 5.4% above it, worst case inside 3 sigma.
+
+### Generated SQL is committed and drift-checked
+
+`make check` regenerates from the specs and fails on any difference.
+CI runs it on every PR.
+
+A PR adding one condition member shows the exact new feature columns in the diff, reviewable by people who do not read Jinja.
+Hand-editing a generated model fails CI.
+A spec and its models cannot disagree.
+
+### Warehouse-agnostic through a small dispatch surface
+
+The entire cross-dialect surface is **nine primitives** in `transform/macros/adapters/`.
+Exact distinct, KMV sketches and the `all_time` merges are all composed from them, so porting to a new warehouse means implementing that one file.
+
+`transform/tests/conformance/` asserts all 25 primitive contracts against whichever adapter is configured, so `dbt test --target databricks` *proves* the Databricks implementations agree rather than merely compiling.
+
+## What is tested, and why it is enough
+
+Passing tests that only check self-consistency are worthless here: every layer would agree on the same wrong answer.
+So the suite is layered.
+
+| Layer | What it catches | Run |
+|---|---|---|
+| 64 unit tests | expansion, naming, Jinja composition, the refreshable-window rule, every spec guard | `make test` |
+| ~1,170 generated invariants | window monotonicity, marginal dominance, min <= max, non-negativity - checked in one scan per test | `make dbt-test` |
+| 25 conformance contracts | a dialect primitive behaving differently from its spec | `make dbt-test` |
+| Brute-force recomputation | a *systematic* error the pipeline would agree with itself about | `make verify` |
+| 6 operational scenarios | retry double-counting, gap loss, late-arrival misbucketing, backwards-replay data loss, stale revision-window partitions, out-of-order serving | `make e2e` |
+| Offline-store audit | published partitions that violate their own contract, whatever produced them | `make audit` |
+| Sketch accuracy | approximate counts drifting outside their bound | `make kmv` |
+
+The generated invariants are the interesting ones.
+They do not check that the SQL ran; they check that the **algebra held on real data**.
+A wider window that contains fewer events, a marginal count smaller than one of its own subsets, a minimum above its maximum - each is an arithmetic contradiction that surfaces the exact feature by name.
+
+`make verify` is the backstop: it recomputes a sample of features the naive way, one flat query straight over raw source, and requires an exact match on every entity.
+
+## Quick start
+
+```bash
+make setup          # venv + dependencies
+make generate       # compile the specs into dbt models
+make explain        # see how a spec expands
+
+make dbt-seed                                  # synthetic fixture with the awkward cases
+make dbt-backfill TARGET_DATE=2026-08-20       # initial load
+make dbt-run  TARGET_DATE=2026-08-21           # one daily increment
+make dbt-test TARGET_DATE=2026-08-21           # invariants + conformance
+
+make dbt-revise TARGET_DATE=2026-08-21          # refresh the still-provisional partitions
+
+make verify TARGET_DATE=2026-08-21             # brute-force cross-check
+make audit                                     # published store vs its contract
+make e2e                                       # retry / gap / late-arrival / replay scenarios
+```
+
+Run as-of dates **forward**.
+The pipeline tolerates gaps and replays by design, but the one thing it cannot reconstruct is `all_time` for a date behind the accumulator's watermark; that case fails the build loudly and is fixed with `--full-refresh` on the accumulator.
+
+## The local stack
+
+```bash
+make stack-up
+```
+
+| Service | URL | Role |
+|---|---|---|
+| SeaweedFS | `localhost:8433` (S3) | object store standing in for the lake |
+| Airflow | `localhost:8081` | runs the registry-derived DAG (admin/admin) |
+| JupyterLab | `localhost:8900` | `notebooks/01_validate_feature_store.ipynb` |
+
+Host ports are deliberately unconventional so the stack coexists with anything already running; override with `FS_S3_PORT`, `FS_AIRFLOW_PORT`, `FS_JUPYTER_PORT`.
+
+The notebook reads the **published Parquet on S3**, not the warehouse, because that is the path a training pipeline actually takes.
+It checks point-in-time safety, shows `all_time` persisting while bounded windows decay for dormant customers, measures the sketch against exact counts, and assembles a leak-free training set.
+
+## Adding a feature
+
+1. Edit or add a file in `features/`.
+2. `make generate` - review the diff; it names every column added or removed.
+3. `make dbt-run && make dbt-test`.
+4. Commit spec and generated output together; CI enforces that they match.
+
+The Airflow DAG is built from `registry/*.json`, so a new spec picks up orchestration with no DAG edit.
+
+## Repository layout
+
+```
+features/            feature specs -- the only hand-edited contract
+generator/           spec -> dbt compiler
+  spec.py            parsing, validation, derivation inference
+  aggregates.py      the monoid algebra
+  expand.py          cross-product expansion and naming
+  expr.py            SQL/Jinja composition
+  render.py          model, doc and test emission
+  registry.py        the machine-readable contract
+transform/           dbt project
+  macros/adapters/   the 9-primitive dialect surface
+  models/            GENERATED
+  tests/             GENERATED invariants + hand-written conformance
+registry/            GENERATED feature registry
+orchestration/dags/  registry-derived Airflow DAG
+tools/               fixture generator, verifiers, offline-store publisher
+notebooks/           validation notebook
+infra/               SeaweedFS + Airflow + Jupyter
+```
+
+## Known limits
+
+- **`feature_type` supports `daily` only.**
+  Other cadences raise rather than silently mis-window.
+- **The `source` block is hand-written SQL and is the one dialect-specific surface.**
+  The generator removes as-of-date expressions from it, but the `FROM`/`WHERE` remain as authored.
+  Everything the generator emits is portable.
+- **`entity_spine: all_time` writes every entity ever seen on every as-of date.**
+  Correct for training joins, expensive at scale; `active_window` is the cheaper setting.
+- **Backfill reconstructs what was knowable at the backfill date**, not at each historical date.
+  For events arriving later than `late_arrival_days`, replay day by day instead.
+- **dbt-core 1.10 emits a version-deprecation notice.**
+  All project-level deprecations are resolved; upgrading the pin is a separate change.

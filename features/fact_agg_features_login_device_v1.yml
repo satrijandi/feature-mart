@@ -1,0 +1,82 @@
+# ==============================================================================
+# 1. Global Configuration
+# ==============================================================================
+feature_name: "fact_agg_features_login_device_v1"
+feature_type: "daily"
+created_by: "i.putra"
+description: |
+  Device and session diversity features off the same login journal.
+  Exists mainly to exercise the approximate distinct-count path: event_id has
+  one value per event, so its per-customer cardinality grows without bound and
+  retaining the full key set would not scale.
+
+# ==============================================================================
+# 2. Data Source Configuration
+# ==============================================================================
+source: |
+  SELECT
+    customer_id AS safe_id,
+    device_id,
+    event_id,
+    event_timestamp,
+    login_source,
+    os_name,
+    event_status
+  FROM bronze.backend_ddb.customer_journal_login
+  WHERE
+    ('{{ target_date }}'::DATE >= _scd_valid_from AND '{{ target_date }}'::DATE < _scd_valid_to)
+    AND customer_id IS NOT NULL
+
+entities: ["safe_id"]
+timestamp_col: "event_timestamp"
+
+# ==============================================================================
+# 3. Feature Condition Configuration
+# ==============================================================================
+condition_cat:
+  - login_status:
+    - default: "TRUE"
+    - is_login_success: "UPPER(event_status) = 'SUCCESS'"
+    - is_login_failed: "UPPER(event_status) = 'FAILED'"
+
+time_cat: ["l7d", "l30d", "all_time"]
+
+# ==============================================================================
+# 4. Atomic Field Configuration
+# ==============================================================================
+atomic_field:
+  # Unbounded cardinality: one distinct value per event. Retaining the key set
+  # would grow without limit, so this uses a fixed-size mergeable sketch.
+  - event_id:
+      apply_cond_cat: [login_status]
+      agg: ['count', 'count_distinct']
+      distinct_method: approx
+
+  # Bounded cardinality: a customer owns a handful of devices, so the exact
+  # key set is both small and worth having exactly.
+  - device_id:
+      apply_cond_cat: [login_status]
+      agg: ['count_distinct']
+      distinct_method: exact
+
+  - login_source:
+      apply_cond_cat: [login_status]
+      agg: ['count_distinct']
+      distinct_method: exact
+
+# ==============================================================================
+# 5. Settings
+# ==============================================================================
+settings:
+  # Deliberately small so the estimator is genuinely exercised by this fixture.
+  # Below k distinct values a KMV sketch is exact; production would use 1024+.
+  kmv_k: 64
+  late_arrival_days: 3
+
+# ==============================================================================
+# 6. Physical Relation Mapping
+# ==============================================================================
+relations:
+  bronze.backend_ddb.customer_journal_login:
+    source_name: bronze_backend_ddb
+    table_name: customer_journal_login

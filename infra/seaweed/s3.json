@@ -1,0 +1,11 @@
+{
+  "identities": [
+    {
+      "name": "featuremart",
+      "credentials": [
+        { "accessKey": "featuremart", "secretKey": "featuremart" }
+      ],
+      "actions": ["Admin", "Read", "Write", "List", "Tagging"]
+    }
+  ]
+}

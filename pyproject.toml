@@ -1,0 +1,56 @@
+[project]
+name = "feature-mart"
+version = "0.1.0"
+description = "Config-driven feature store datamart: YAML feature specs compiled into dbt models"
+requires-python = ">=3.11,<3.12"
+dependencies = [
+    "pyyaml>=6.0.2",
+    "jinja2>=3.1.4",
+    "pydantic>=2.9.0",
+    "click>=8.1.7",
+    "jsonschema>=4.23.0",
+]
+
+[project.optional-dependencies]
+dbt = [
+    "dbt-core>=1.9.0,<1.11",
+    "dbt-duckdb>=1.9.0,<1.11",
+    "duckdb>=1.1.3",
+]
+dev = [
+    "pytest>=8.3.0",
+    "pytest-cov>=6.0.0",
+    "ruff>=0.8.0",
+]
+notebook = [
+    "jupyterlab>=4.3.0",
+    "pandas>=2.2.0",
+    "pyarrow>=18.0.0",
+    "matplotlib>=3.9.0",
+    "boto3>=1.35.0",
+]
+
+[project.scripts]
+featuremart = "generator.cli:cli"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["generator"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+ignore = ["E501"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+# `tools` is importable from tests, so the revision-window rule can be unit
+# tested directly rather than only through the shell.
+pythonpath = ["."]

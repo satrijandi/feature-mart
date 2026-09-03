@@ -1,0 +1,90 @@
+# ==============================================================================
+# 1. Global Configuration
+# ==============================================================================
+feature_name: "fact_agg_features_login_history_v2"
+feature_type: "daily"
+created_by: "i.putra"
+description: |
+  This table refers to bronze table customer_journal_login.
+  V2 is updated version from V1, which is adding all_time login features
+
+# ==============================================================================
+# 2. Data Source Configuration
+# ==============================================================================
+source: |
+  SELECT
+    customer_id AS safe_id,
+    device_id,
+    event_id,
+    event_timestamp,
+    DATEDIFF(DAY, event_timestamp, '{{ target_date }}'::DATE) AS days_since_login,
+    login_source,
+    os_name,
+    event_status
+  FROM bronze.backend_ddb.customer_journal_login
+  WHERE
+    ('{{ target_date }}'::DATE >= _scd_valid_from AND '{{ target_date }}'::DATE < _scd_valid_to)
+    AND customer_id IS NOT NULL
+
+entities: ["safe_id"]
+timestamp_col: "event_timestamp"
+
+# ==============================================================================
+# 3. Feature Condition Configuration
+# ==============================================================================
+# 3.1 Condition Categories
+condition_cat:
+  - login_status: # Login status categories
+    - default: "TRUE"
+    - is_login_success: "UPPER(event_status) = 'SUCCESS'"
+    - is_login_failed: "UPPER(event_status) = 'FAILED'"
+
+  - login_os: # Login OS categories
+    - default: "TRUE"
+    - is_ios: "UPPER(os_name) = 'IOS'"
+    - is_android: "UPPER(os_name) = 'ANDROID'"
+    - is_others: "UPPER(os_name) NOT IN ('IOS', 'ANDROID')"
+
+  - behavioural_time: # Time when the customer is logging in
+    - default: "TRUE"
+    - is_late_night: "EXTRACT(HOUR FROM event_timestamp) BETWEEN 0 AND 4"
+    - is_early_morning: "EXTRACT(HOUR FROM event_timestamp) BETWEEN 5 AND 8"
+    - is_office_hours: "EXTRACT(HOUR FROM event_timestamp) BETWEEN 9 AND 17"
+    - is_evening_leisure: "EXTRACT(HOUR FROM event_timestamp) BETWEEN 18 AND 23"
+
+# 3.2 Time Condition Categories (Moving Window Features)
+time_cat: ["l7d", "l14d", "l30d", "all_time"]
+
+# ==============================================================================
+# 4. Atomic Field Configuration
+# ==============================================================================
+atomic_field:
+  # If the atomic field is existed from the source
+  - event_id: # General Login Volume across OS, Status and Time Behaviourals
+      apply_cond_cat: [login_status, login_os, behavioural_time]
+      agg: ['count']
+
+  - device_id: # To see device model diversity (how often they change device model)
+      apply_cond_cat: [login_status, login_os]
+      agg: ['count_distinct']
+
+  - event_timestamp: # To see first time login and last time login features
+      apply_cond_cat: [login_status, login_os]
+      agg: ['min', 'max']
+      field_type: timestamp
+
+  - days_since_login: # To see how long the customer has been inactive (last time login)
+      apply_cond_cat: [login_status, login_os]
+      agg: ['min', 'max']
+      field_type: numeric
+
+# ==============================================================================
+# 5. Physical Relation Mapping
+# ==============================================================================
+# Maps the hard-coded relation in `source` onto a dbt source, so the identical
+# generated model reads a seeded fixture locally and the real bronze table in
+# production. Generation fails if `source` reads a relation that is not mapped.
+relations:
+  bronze.backend_ddb.customer_journal_login:
+    source_name: bronze_backend_ddb
+    table_name: customer_journal_login

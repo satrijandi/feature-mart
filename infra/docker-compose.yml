@@ -1,0 +1,191 @@
+# =============================================================================
+# Local rehearsal stack.
+#
+# The point is fidelity, not convenience: the same generated dbt models, the
+# same registry-derived DAG and the same invariant tests that would run against
+# Databricks run here against DuckDB reading Parquet over an S3 API. What
+# differs between here and production is the adapter and the credentials, and
+# the conformance suite is what proves that difference is safe.
+#
+#   seaweedfs   S3-compatible object store standing in for the lake
+#   postgres    Airflow metadata database
+#   airflow     scheduler + webserver, running the registry-derived DAG
+#   jupyter     analysis surface over the published marts
+#
+# The notebook deliberately has no access to the warehouse file: DuckDB locks
+# it exclusively, so a notebook holding it open would block the scheduler.
+# Notebooks read the published Parquet on S3, as any other consumer would.
+#
+# Bring up everything:      make stack-up
+# Just the lake + notebook: docker compose --profile lake --profile notebook up -d
+#
+# Host ports default to unconventional values (S3 8433, Airflow 8081, Jupyter
+# 8900) so this stack coexists with anything already running. Override with
+# FS_S3_PORT / FS_AIRFLOW_PORT / FS_JUPYTER_PORT.
+# =============================================================================
+
+name: feature-mart
+
+x-airflow-common: &airflow-common
+  build:
+    context: ..
+    dockerfile: infra/Dockerfile.airflow
+  environment: &airflow-env
+    AIRFLOW__CORE__EXECUTOR: LocalExecutor
+    AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+    AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "false"
+    AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres/airflow
+    AIRFLOW__WEBSERVER__EXPOSE_CONFIG: "true"
+    AIRFLOW__CORE__DAGS_FOLDER: /opt/feature-mart/orchestration/dags
+    # Feature-store wiring
+    FS_PROJECT_ROOT: /opt/feature-mart
+    FS_DBT_BIN: dbt
+    FS_BRONZE_SCHEMA: bronze_backend_ddb
+    DBT_TARGET: seaweed
+    DBT_DUCKDB_PATH: /opt/feature-mart/transform/warehouse.duckdb
+    S3_ENDPOINT: seaweedfs:8333
+    S3_ACCESS_KEY: featuremart
+    S3_SECRET_KEY: featuremart
+  volumes:
+    - ..:/opt/feature-mart
+  depends_on:
+    postgres:
+      condition: service_healthy
+    seaweedfs:
+      condition: service_healthy
+
+services:
+
+  # --- object store --------------------------------------------------------
+  seaweedfs:
+    image: chrislusf/seaweedfs:3.71
+    profiles: ["lake", "full"]
+    command: >
+      server
+      -dir=/data
+      -master.volumeSizeLimitMB=256
+      -volume.max=10
+      -filer
+      -s3
+      -s3.port=8333
+      -s3.config=/etc/seaweedfs/s3.json
+      -ip=seaweedfs
+    ports:
+      # Host ports are overridable: this machine may already run another stack
+      # on the conventional ones. Container-internal ports never change, so
+      # nothing else in the compose file or the dbt profile has to move.
+      - "${FS_S3_PORT:-8433}:8333"      # S3 API
+      - "${FS_SEAWEED_UI_PORT:-9433}:9333"  # master UI
+      - "${FS_FILER_PORT:-8988}:8888"   # filer
+    volumes:
+      - seaweed-data:/data
+      - ./seaweed/s3.json:/etc/seaweedfs/s3.json:ro
+    healthcheck:
+      # `-ip=seaweedfs` binds the master to the container hostname, so probing
+      # localhost is refused even while the service is perfectly healthy.
+      test: ["CMD", "wget", "-q", "--spider", "http://seaweedfs:9333/cluster/status"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 10s
+
+  # Creates the bucket layout once the store is up, then exits.
+  seaweed-init:
+    image: amazon/aws-cli:2.17.0
+    profiles: ["lake", "full"]
+    depends_on:
+      seaweedfs:
+        condition: service_healthy
+    environment:
+      AWS_ACCESS_KEY_ID: featuremart
+      AWS_SECRET_ACCESS_KEY: featuremart
+      AWS_DEFAULT_REGION: us-east-1
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        for b in bronze silver gold; do
+          aws --endpoint-url http://seaweedfs:8333 s3 mb s3://$$b 2>/dev/null || true
+        done
+        aws --endpoint-url http://seaweedfs:8333 s3 ls
+        echo "buckets ready"
+
+  # --- airflow -------------------------------------------------------------
+  postgres:
+    image: postgres:16-alpine
+    profiles: ["orchestration", "full"]
+    environment:
+      POSTGRES_USER: airflow
+      POSTGRES_PASSWORD: airflow
+      POSTGRES_DB: airflow
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U airflow"]
+      interval: 5s
+      retries: 10
+
+  airflow-init:
+    <<: *airflow-common
+    profiles: ["orchestration", "full"]
+    entrypoint: ["/bin/bash", "-c"]
+    command:
+      - |
+        airflow db migrate
+        airflow users create --username admin --password admin \
+          --firstname a --lastname a --role Admin --email admin@example.com || true
+        echo "airflow initialised"
+    restart: "no"
+
+  airflow-scheduler:
+    <<: *airflow-common
+    profiles: ["orchestration", "full"]
+    command: scheduler
+    depends_on:
+      airflow-init:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  airflow-webserver:
+    <<: *airflow-common
+    profiles: ["orchestration", "full"]
+    command: webserver
+    ports:
+      - "${FS_AIRFLOW_PORT:-8081}:8080"
+    depends_on:
+      airflow-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 15s
+      retries: 10
+      start_period: 40s
+    restart: unless-stopped
+
+  # --- analysis ------------------------------------------------------------
+  jupyter:
+    build:
+      context: ..
+      dockerfile: infra/Dockerfile.jupyter
+    profiles: ["notebook", "full"]
+    ports:
+      - "${FS_JUPYTER_PORT:-8900}:8888"
+    environment:
+      # Notebooks read the PUBLISHED store on S3, never the warehouse file.
+      # DuckDB takes an exclusive file lock, so an idle notebook connection
+      # would block the scheduler's next dbt run -- and reading the offline
+      # store is the path a real consumer takes anyway, which makes the
+      # notebook a truer rehearsal.
+      S3_ENDPOINT: seaweedfs:8333
+      S3_ACCESS_KEY: featuremart
+      S3_SECRET_KEY: featuremart
+    volumes:
+      - ..:/opt/feature-mart
+    working_dir: /opt/feature-mart
+    command: >
+      jupyter lab --ip=0.0.0.0 --port=8888 --no-browser --allow-root
+      --IdentityProvider.token='' --ServerApp.password=''
+      --ServerApp.root_dir=/opt/feature-mart
+
+volumes:
+  seaweed-data:
+  postgres-data:

@@ -1,0 +1,184 @@
+# ============================================================================
+# GENERATED FILE - DO NOT EDIT BY HAND
+#   feature   : fact_agg_features_login_device_v1
+#   spec hash : 7e3c413228a7
+#   Edit the spec and run `make generate`.
+# ============================================================================
+version: 2
+models:
+- name: fact_agg_features_login_device_v1
+  description: 'Device and session diversity features off the same login journal.
+
+    Exists mainly to exercise the approximate distinct-count path: event_id has
+
+    one value per event, so its per-customer cardinality grows without bound and
+
+    retaining the full key set would not scale.
+
+
+    36 features per entity per day, expanded from 3 atomic fields x 1 condition categories x 3 time windows.
+
+    Owner: i.putra. Generated from features/fact_agg_features_login_device_v1.yml.'
+  data_tests:
+  - fs_unique_combination:
+      arguments:
+        combination_of_columns:
+        - target_date
+        - safe_id
+  columns:
+  - name: target_date
+    description: As-of date these features describe. Every value is computed from events at or before
+      this date, so joining labels on it cannot leak the future.
+    data_tests:
+    - not_null
+  - name: safe_id
+    description: Entity key (safe_id).
+    data_tests:
+    - not_null
+  - name: count_event_id_l7d
+    description: count of event_id for all rows over the 7 days ending on the as-of date (inclusive)
+  - name: count_event_id_l30d
+    description: count of event_id for all rows over the 30 days ending on the as-of date (inclusive)
+  - name: count_event_id_all_time
+    description: count of event_id for all rows over all history up to and including the as-of date
+  - name: count_event_id_is_login_success_l7d
+    description: count of event_id for login_status=is_login_success over the 7 days ending on the as-of
+      date (inclusive)
+  - name: count_event_id_is_login_success_l30d
+    description: count of event_id for login_status=is_login_success over the 30 days ending on the as-of
+      date (inclusive)
+  - name: count_event_id_is_login_success_all_time
+    description: count of event_id for login_status=is_login_success over all history up to and including
+      the as-of date
+  - name: count_event_id_is_login_failed_l7d
+    description: count of event_id for login_status=is_login_failed over the 7 days ending on the as-of
+      date (inclusive)
+  - name: count_event_id_is_login_failed_l30d
+    description: count of event_id for login_status=is_login_failed over the 30 days ending on the as-of
+      date (inclusive)
+  - name: count_event_id_is_login_failed_all_time
+    description: count of event_id for login_status=is_login_failed over all history up to and including
+      the as-of date
+  - name: count_distinct_event_id_l7d
+    description: count_distinct of event_id for all rows over the 7 days ending on the as-of date (inclusive)
+  - name: count_distinct_event_id_l30d
+    description: count_distinct of event_id for all rows over the 30 days ending on the as-of date (inclusive)
+  - name: count_distinct_event_id_all_time
+    description: count_distinct of event_id for all rows over all history up to and including the as-of
+      date
+  - name: count_distinct_event_id_is_login_success_l7d
+    description: count_distinct of event_id for login_status=is_login_success over the 7 days ending on
+      the as-of date (inclusive)
+  - name: count_distinct_event_id_is_login_success_l30d
+    description: count_distinct of event_id for login_status=is_login_success over the 30 days ending
+      on the as-of date (inclusive)
+  - name: count_distinct_event_id_is_login_success_all_time
+    description: count_distinct of event_id for login_status=is_login_success over all history up to and
+      including the as-of date
+  - name: count_distinct_event_id_is_login_failed_l7d
+    description: count_distinct of event_id for login_status=is_login_failed over the 7 days ending on
+      the as-of date (inclusive)
+  - name: count_distinct_event_id_is_login_failed_l30d
+    description: count_distinct of event_id for login_status=is_login_failed over the 30 days ending on
+      the as-of date (inclusive)
+  - name: count_distinct_event_id_is_login_failed_all_time
+    description: count_distinct of event_id for login_status=is_login_failed over all history up to and
+      including the as-of date
+  - name: count_distinct_device_id_l7d
+    description: count_distinct of device_id for all rows over the 7 days ending on the as-of date (inclusive)
+  - name: count_distinct_device_id_l30d
+    description: count_distinct of device_id for all rows over the 30 days ending on the as-of date (inclusive)
+  - name: count_distinct_device_id_all_time
+    description: count_distinct of device_id for all rows over all history up to and including the as-of
+      date
+  - name: count_distinct_device_id_is_login_success_l7d
+    description: count_distinct of device_id for login_status=is_login_success over the 7 days ending
+      on the as-of date (inclusive)
+  - name: count_distinct_device_id_is_login_success_l30d
+    description: count_distinct of device_id for login_status=is_login_success over the 30 days ending
+      on the as-of date (inclusive)
+  - name: count_distinct_device_id_is_login_success_all_time
+    description: count_distinct of device_id for login_status=is_login_success over all history up to
+      and including the as-of date
+  - name: count_distinct_device_id_is_login_failed_l7d
+    description: count_distinct of device_id for login_status=is_login_failed over the 7 days ending on
+      the as-of date (inclusive)
+  - name: count_distinct_device_id_is_login_failed_l30d
+    description: count_distinct of device_id for login_status=is_login_failed over the 30 days ending
+      on the as-of date (inclusive)
+  - name: count_distinct_device_id_is_login_failed_all_time
+    description: count_distinct of device_id for login_status=is_login_failed over all history up to and
+      including the as-of date
+  - name: count_distinct_login_source_l7d
+    description: count_distinct of login_source for all rows over the 7 days ending on the as-of date
+      (inclusive)
+  - name: count_distinct_login_source_l30d
+    description: count_distinct of login_source for all rows over the 30 days ending on the as-of date
+      (inclusive)
+  - name: count_distinct_login_source_all_time
+    description: count_distinct of login_source for all rows over all history up to and including the
+      as-of date
+  - name: count_distinct_login_source_is_login_success_l7d
+    description: count_distinct of login_source for login_status=is_login_success over the 7 days ending
+      on the as-of date (inclusive)
+  - name: count_distinct_login_source_is_login_success_l30d
+    description: count_distinct of login_source for login_status=is_login_success over the 30 days ending
+      on the as-of date (inclusive)
+  - name: count_distinct_login_source_is_login_success_all_time
+    description: count_distinct of login_source for login_status=is_login_success over all history up
+      to and including the as-of date
+  - name: count_distinct_login_source_is_login_failed_l7d
+    description: count_distinct of login_source for login_status=is_login_failed over the 7 days ending
+      on the as-of date (inclusive)
+  - name: count_distinct_login_source_is_login_failed_l30d
+    description: count_distinct of login_source for login_status=is_login_failed over the 30 days ending
+      on the as-of date (inclusive)
+  - name: count_distinct_login_source_is_login_failed_all_time
+    description: count_distinct of login_source for login_status=is_login_failed over all history up to
+      and including the as-of date
+  - name: _first_event_date
+    description: Earliest event_date ever seen for this entity.
+  - name: _last_event_date
+    description: Latest event_date seen at or before target_date. Use it to tell a genuine zero from a
+      dormant entity.
+  - name: _generated_at
+    description: Wall-clock time this row was materialised.
+  - name: _spec_version
+    description: Fingerprint of the spec that produced this row (7e3c413228a7). A change here explains
+      a change in feature semantics.
+- name: int_fact_agg_features_login_device_v1__daily_partials
+  description: 'Reusable per-entity, per-event_date partial aggregate state. Composable by construction:
+    every published window is a fold over these rows.'
+  data_tests:
+  - fs_unique_combination:
+      arguments:
+        combination_of_columns:
+        - safe_id
+        - event_date
+  columns:
+  - name: event_date
+    description: Calendar date of the events summarised by this row.
+    data_tests:
+    - not_null
+  - name: safe_id
+    description: Entity key (safe_id).
+    data_tests:
+    - not_null
+- name: int_fact_agg_features_login_device_v1__alltime_state
+  description: Sealed all_time accumulator, one row per entity. Advances only over event_dates old enough
+    to be immune to late arrivals.
+  data_tests:
+  - fs_unique_combination:
+      arguments:
+        combination_of_columns:
+        - safe_id
+  columns:
+  - name: safe_id
+    description: Entity key (safe_id).
+    data_tests:
+    - not_null
+  - name: _state_as_of_date
+    description: 'Watermark: every event_date at or before this has been folded in. Drives the self-healing,
+      idempotent catch-up range.'
+    data_tests:
+    - not_null

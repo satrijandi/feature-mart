@@ -1,0 +1,20 @@
+# Airflow with dbt-core and the feature-mart generator on the same image, so a
+# task can regenerate models and run them without a second toolchain.
+FROM apache/airflow:2.10.5-python3.11
+
+USER root
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends git curl \
+ && rm -rf /var/lib/apt/lists/*
+USER airflow
+
+COPY --chown=airflow:root pyproject.toml /tmp/build/pyproject.toml
+COPY --chown=airflow:root generator /tmp/build/generator
+
+RUN pip install --no-cache-dir \
+      "dbt-core>=1.9,<1.11" "dbt-duckdb>=1.9,<1.11" "duckdb>=1.1.3" \
+      "pyyaml>=6.0.2" "jinja2>=3.1.4" "click>=8.1.7" "boto3>=1.35" \
+ && pip install --no-cache-dir --no-deps /tmp/build
+
+ENV PYTHONPATH=/opt/feature-mart
+WORKDIR /opt/feature-mart
