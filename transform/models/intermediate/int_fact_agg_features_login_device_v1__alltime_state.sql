@@ -4,7 +4,7 @@
 --   layer      : intermediate / all_time sealed state
 --   feature    : fact_agg_features_login_device_v1
 --   spec       : features/fact_agg_features_login_device_v1.yml
---   spec hash  : b9c4115e4cfb
+--   spec hash  : aaec8c5d5bcb
 --   generator  : featuremart
 --
 -- Edit the spec and run `make generate`. CI fails when a generated file
@@ -127,6 +127,6 @@ select
     {{ fs_least2('prev._min_event_date', 'n._min_event_date') }} as _min_event_date,
     {{ fs_greatest2('prev._max_event_date', 'n._max_event_date') }} as _max_event_date,
     {{ fs_date_offset_lit(3) }} as _state_as_of_date,
-    'b9c4115e4cfb' as _spec_version
+    'aaec8c5d5bcb' as _spec_version
 from new_days n
 left join prev on n.safe_id = prev.safe_id

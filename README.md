@@ -126,17 +126,28 @@ The watermark therefore tracks the last day that had events, not the last day at
 
 ### The spine decides who gets a row, and what a missing one means
 
-`entity_spine: active_window` publishes only entities active inside the widest bounded window.
-On the test fixture that is 16% fewer rows; on a real login journal with a long dormant tail the saving is far larger, because the all_time spine writes every customer ever seen on every single day.
+`entity_spine` is per spec, and the two specs in this repo deliberately differ so the trade-off can be read off the same source:
 
-What it costs is coverage, and the cost is worth stating plainly rather than discovering downstream.
-A dormant entity has no row for that date, so an as-of equi-join misses; on the fixture, 14.9% of the population known by a given cut-off is unscorable that day.
+| | `fact_agg_features_login_history_v2` | `fact_agg_features_login_device_v1` |
+|---|---|---|
+| spine | `active_window` | `all_time` |
+| rows over 17 dates | 2,493 | 2,903 |
+| newest partition | 141 entities, decaying | 172 entities, flat |
+
+The `active_window` mart decays from 165 entities to 141 as customers go quiet; the `all_time` mart holds flat at 172 and publishes every customer ever seen on every single day.
+The gap widens over time, which is the point: `all_time`'s cost grows with the dormant tail, and on a real login journal that tail is most of the table.
+
+What `active_window` costs is coverage, and it is worth stating plainly rather than discovering downstream.
+A dormant entity has **no row** for that date, so an as-of equi-join misses rather than resolving to an older snapshot; on the fixture, 14.9% of the population known by a given cut-off is unscorable that day.
 Treating a missing row as inactivity is usually right for counts and wrong for extrema and `all_time`, which are not zero for a dormant entity - merely unpublished.
 The generated model carries that warning at the join site, and the notebook measures the excluded population instead of letting an inner join hide it.
 
-The risk this setting introduces is that going quiet might truncate an entity's history, which would make `all_time` silently reset on their return.
+Running two spines against one source has a consequence of its own: joining the two marts on `(safe_id, target_date)` is asymmetric, because rows exist in the `all_time` mart that have no counterpart in the other.
+That is fine as long as it is deliberate.
+
+The risk `active_window` introduces is that going quiet might truncate an entity's history, which would make `all_time` silently reset on their return.
 It does not: the spine narrows the mart, never the accumulator.
-A scenario asserts it directly - 28 entities drop out of the fixture's mart and all 28 keep their full history in the sealed state.
+A scenario asserts each spec against its own setting in the same run - 28 entities drop out of the `active_window` mart and all 28 keep their full history, while the `all_time` mart drops nobody and publishes everything the accumulator holds.
 
 ### A partition is provisional until its late-arrival window closes
 
@@ -292,10 +303,9 @@ infra/               SeaweedFS + Airflow + Jupyter
 - **The `source` block is hand-written SQL and is the one dialect-specific surface.**
   The generator removes as-of-date expressions from it, but the `FROM`/`WHERE` remain as authored.
   Everything the generator emits is portable.
-- **`entity_spine` is set to `active_window`.**
-  Only entities active inside the widest bounded window get a row for a date, so a dormant entity has **no row** rather than a row of zeros - an equi-join on `(entity, target_date)` misses rather than resolving to an older snapshot.
-  Their history is not lost: the accumulator keeps every entity and they return with `all_time` intact.
-  Switch to `all_time` if consumers should not have to make that call themselves.
+- **The two specs run different spines on purpose.**
+  `history_v2` is `active_window` and `device_v1` is `all_time`, so a join between them on `(safe_id, target_date)` is asymmetric by construction.
+  Under `active_window` a dormant entity has **no row** rather than a row of zeros; their history is not lost, and they return with `all_time` intact.
 - **Backfill reconstructs what was knowable at the backfill date**, not at each historical date.
   For events arriving later than `late_arrival_days`, replay day by day instead.
 - **dbt-core 1.10 emits a version-deprecation notice.**

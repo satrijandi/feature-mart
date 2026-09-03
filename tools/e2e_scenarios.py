@@ -348,61 +348,85 @@ def main() -> int:
         f"served {shift(wm, 1)}",
     )
 
-    # --- 7. dormancy under a narrowed spine ---------------------------------
-    registry = json.loads(
-        (ROOT / "registry" / "fact_agg_features_login_history_v2.json").read_text()
-    )
-    spine = registry["settings"]["entity_spine"]
-    print(f"\n=== SCENARIO 7: dormancy does not truncate history (spine: {spine}) ===")
+    # --- 7. each spec's spine contract, whatever it is set to ---------------
+    # The two specs read the same source but run different spines, so this
+    # asserts each one honours its own setting rather than assuming they agree.
+    # The property that matters under either is the same: the spine decides who
+    # gets published, and must never decide who the accumulator remembers.
+    print("\n=== SCENARIO 7: each spec honours its own entity_spine ===")
 
-    lo, hi = query(f"select min(target_date), max(target_date) from {MART}")[0]
-    dropped = query(f"""
-        select e.safe_id, e.count_event_id_all_time
-        from {MART} e
-        left join {MART} l on l.safe_id = e.safe_id and l.target_date = date '{hi}'
-        where e.target_date = date '{lo}' and l.safe_id is null
-    """)
+    for reg_path in sorted((ROOT / "registry").glob("*.json")):
+        registry = json.loads(reg_path.read_text())
+        name = registry["feature_name"]
+        spine = registry["settings"]["entity_spine"]
+        mart = f"marts.{name}"
+        state = f"intermediate.{registry['models']['alltime_state']}"
+        count_col = next(
+            f["name"]
+            for f in registry["features"]
+            if f["agg"] == "count" and f["window"] == "all_time" and f["is_marginal"]
+        )
+        print(f"\n  {name}  [{spine}]")
 
-    if spine == "all_time":
-        passed &= check(
-            "spine is all_time, so no entity is ever dropped",
-            not dropped,
-            f"{len(dropped)} dropped",
-        )
-    else:
-        passed &= check(
-            "the narrowed spine actually drops dormant entities",
-            bool(dropped),
-            f"{len(dropped)} entity(ies) stopped being published",
-        )
-        # The property that matters: dropping out of the mart must not shrink
-        # the accumulator. Its count is compared against what the mart last
-        # published, so a truncation shows up as a shortfall.
-        shortfalls = []
-        for safe_id, last_published in dropped:
-            held = query(f"select p_count_event_id from {STATE} where safe_id = '{safe_id}'")
-            if not held or held[0][0] < last_published:
-                shortfalls.append((safe_id, last_published, held[0][0] if held else None))
-        passed &= check(
-            "every dropped entity's history is intact in the accumulator",
-            not shortfalls,
-            f"{len(dropped)} checked, {len(shortfalls)} truncated",
-        )
-        for sid, was, now in shortfalls[:5]:
-            print(f"      {sid}: published {was}, accumulator holds {now}")
+        lo, hi = query(f"select min(target_date), max(target_date) from {mart}")[0]
+        dropped = query(f"""
+            select e.safe_id, e.{count_col}
+            from {mart} e
+            left join {mart} l on l.safe_id = e.safe_id and l.target_date = date '{hi}'
+            where e.target_date = date '{lo}' and l.safe_id is null
+        """)
 
-        # And the mart must not be publishing a dormant entity anyway.
-        widest = max(f["window_days"] for f in registry["features"] if f["window_days"])
-        stale = query(f"""
-            select count(*) from {MART}
-            where target_date = date '{hi}'
-              and _last_event_date < date '{hi}' - {widest - 1}
-        """)[0][0]
-        passed &= check(
-            f"no published row is older than the {widest}-day window",
-            stale == 0,
-            f"{stale} stale row(s)",
-        )
+        if spine == "all_time":
+            passed &= check(
+                "no entity is ever dropped once published",
+                not dropped,
+                f"{len(dropped)} dropped between {lo} and {hi}",
+            )
+            # Every entity the accumulator knows should be published.
+            unpublished = query(f"""
+                select count(*) from {state} a
+                where not exists (
+                    select 1 from {mart} m
+                    where m.safe_id = a.safe_id and m.target_date = date '{hi}'
+                )
+                  and a._min_event_date <= date '{hi}'
+            """)[0][0]
+            passed &= check(
+                "every entity the accumulator holds is published",
+                unpublished == 0,
+                f"{unpublished} held but unpublished",
+            )
+        else:
+            widest = max(f["window_days"] for f in registry["features"] if f["window_days"])
+            passed &= check(
+                "the narrowed spine actually drops dormant entities",
+                bool(dropped),
+                f"{len(dropped)} stopped being published",
+            )
+            # The risk this setting introduces: dropping out of the mart must
+            # not shrink the accumulator, or all_time would reset on return.
+            shortfalls = []
+            for safe_id, last_published in dropped:
+                held = query(f"select p_count_event_id from {state} where safe_id = '{safe_id}'")
+                if not held or held[0][0] < last_published:
+                    shortfalls.append((safe_id, last_published, held[0][0] if held else None))
+            passed &= check(
+                "every dropped entity's history is intact in the accumulator",
+                not shortfalls,
+                f"{len(dropped)} checked, {len(shortfalls)} truncated",
+            )
+            for sid, was, now in shortfalls[:5]:
+                print(f"        {sid}: published {was}, accumulator holds {now}")
+            stale = query(f"""
+                select count(*) from {mart}
+                where target_date = date '{hi}'
+                  and _last_event_date < date '{hi}' - {widest - 1}
+            """)[0][0]
+            passed &= check(
+                f"no published row is older than the {widest}-day window",
+                stale == 0,
+                f"{stale} stale row(s)",
+            )
 
     print("\n" + ("ALL SCENARIOS PASSED" if passed else "SCENARIOS FAILED"))
     return 0 if passed else 1
