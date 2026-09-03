@@ -1,0 +1,58 @@
+feature_name: "probe_everything"
+feature_type: "daily"
+created_by: "i.putra"
+description: |
+  Exercises every optional key at once.
+source: |
+  SELECT
+    customer_id AS safe_id,
+    event_id,
+    session_id,
+    device_id,
+    event_timestamp,
+    DATEDIFF(DAY, event_timestamp, '{{ target_date }}'::DATE) AS days_since_login,
+    os_name,
+    event_status
+  FROM bronze.backend_ddb.customer_journal_login
+  WHERE
+    ('{{ target_date }}'::DATE >= _scd_valid_from AND '{{ target_date }}'::DATE < _scd_valid_to)
+    AND customer_id IS NOT NULL
+entities: ["safe_id"]
+timestamp_col: "event_timestamp"
+condition_cat:
+  - login_status:
+    - default: "TRUE"
+    - is_success: "UPPER(event_status) = 'SUCCESS'"
+  - login_os:
+    - default: "TRUE"
+    - is_ios: "UPPER(os_name) = 'IOS'"
+    - is_android: "UPPER(os_name) = 'ANDROID'"
+time_cat: ["l1d", "l7d", "l90d", "all_time"]
+atomic_field:
+  - event_id:
+      description: "Login volume."
+      apply_cond_cat: [login_status, login_os]
+      agg: ['count']
+  - session_id:
+      apply_cond_cat: [login_status]
+      agg: ['count_distinct']
+      distinct_method: approx
+  - device_id:
+      agg: ['count_distinct']
+      distinct_method: exact
+  - days_since_login:
+      apply_cond_cat: [login_os]
+      agg: ['min', 'max']
+      field_type: numeric
+      derived: {kind: days_since, from: event_timestamp}
+settings:
+  entity_spine: active_window
+  window_convention: trailing
+  late_arrival_days: 5
+  kmv_k: 1024
+  separator: "_"
+  source_is_append_only: true
+relations:
+  bronze.backend_ddb.customer_journal_login:
+    source_name: bronze_backend_ddb
+    table_name: customer_journal_login

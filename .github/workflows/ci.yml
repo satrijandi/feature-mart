@@ -36,6 +36,13 @@ jobs:
       - name: Generated output matches the specs
         run: .venv/bin/python -m generator.cli generate --check
 
+      - name: Example specs in the authoring reference still parse
+        run: |
+          for f in features/examples/*.yml; do
+            .venv/bin/python -m generator.cli explain "$f" > /dev/null
+            echo "ok $f"
+          done
+
       - name: Lint
         run: |
           .venv/bin/ruff check generator tools tests

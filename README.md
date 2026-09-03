@@ -265,6 +265,17 @@ Host ports are deliberately unconventional so the stack coexists with anything a
 The notebook reads the **published Parquet on S3**, not the warehouse, because that is the path a training pipeline actually takes.
 It checks point-in-time safety, shows `all_time` persisting while bounded windows decay for dormant customers, measures the sketch against exact counts, and assembles a leak-free training set.
 
+## Writing a spec
+
+`features/examples/` holds a worked spec for each capability - the six required keys alone, all six aggregations together, a composite entity key, and one exercising every optional key at once.
+`make examples` parses and expands them all, and CI runs it, so an example that stops being valid fails the build rather than sitting wrong in the docs.
+
+```bash
+make explain FEATURE=<name>     # show the expansion, generate nothing
+make validate                   # check every spec parses
+make examples                   # check the documented examples still work
+```
+
 ## Adding a feature
 
 1. Edit or add a file in `features/`.

@@ -18,7 +18,7 @@ export DBT_PROFILES_DIR = $(CURDIR)/transform
 
 .DEFAULT_GOAL := help
 .PHONY: help setup generate check validate explain lint test dbt-seed dbt-backfill \
-        dbt-run dbt-revise dbt-test dbt-docs verify e2e kmv audit audit-fix \
+        examples dbt-run dbt-revise dbt-test dbt-docs verify e2e kmv audit audit-fix \
         publish stack-up \
         stack-down \
         stack-logs ci clean
@@ -44,6 +44,12 @@ validate:  ## Validate every spec without generating
 
 explain:  ## Show how FEATURE=<name> expands
 	$(PY) -m generator.cli explain features/$(FEATURE).yml
+
+examples:  ## Parse and expand every spec in features/examples/
+	@for f in features/examples/*.yml; do \
+	  $(PY) -m generator.cli explain $$f > /dev/null || exit 1; \
+	  echo "  ok   $$f"; \
+	done
 
 lint:  ## Lint the generator
 	.venv/bin/ruff check generator tools tests
@@ -114,7 +120,7 @@ stack-logs:  ## Tail stack logs
 	$(COMPOSE) --profile full logs -f --tail=100
 
 # --- CI ---------------------------------------------------------------------
-ci: check lint test  ## Everything CI runs before touching a warehouse
+ci: check lint test examples  ## Everything CI runs before touching a warehouse
 	@echo "generator OK"
 
 clean:  ## Remove build artefacts

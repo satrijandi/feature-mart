@@ -1,0 +1,17 @@
+feature_name: "probe_composite_entity"
+source: |
+  SELECT
+    customer_id AS safe_id,
+    merchant_id,
+    event_id,
+    event_timestamp
+  FROM bronze.db.txn
+  WHERE customer_id IS NOT NULL
+entities: ["safe_id", "merchant_id"]
+timestamp_col: "event_timestamp"
+time_cat: ["l30d"]
+atomic_field:
+  - event_id:
+      agg: ['count']
+relations:
+  bronze.db.txn: {source_name: bronze, table_name: txn}

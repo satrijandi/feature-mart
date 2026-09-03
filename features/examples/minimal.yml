@@ -1,0 +1,23 @@
+feature_name: "fact_agg_features_login_minimal_v1"
+
+source: |
+  SELECT
+    customer_id AS safe_id,
+    event_id,
+    event_timestamp
+  FROM bronze.backend_ddb.customer_journal_login
+  WHERE customer_id IS NOT NULL
+
+entities: ["safe_id"]
+timestamp_col: "event_timestamp"
+
+time_cat: ["l7d", "l30d"]
+
+atomic_field:
+  - event_id:
+      agg: ['count']
+
+relations:
+  bronze.backend_ddb.customer_journal_login:
+    source_name: bronze_backend_ddb
+    table_name: customer_journal_login

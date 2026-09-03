@@ -1,0 +1,26 @@
+feature_name: "probe_all_aggregations"
+source: |
+  SELECT
+    customer_id AS safe_id,
+    event_id,
+    device_id,
+    amount,
+    event_timestamp
+  FROM bronze.db.txn
+  WHERE customer_id IS NOT NULL
+entities: ["safe_id"]
+timestamp_col: "event_timestamp"
+time_cat: ["l7d", "all_time"]
+atomic_field:
+  - event_id:
+      agg: ['count']
+  - device_id:
+      agg: ['count_distinct']
+  - amount:
+      agg: ['sum', 'min', 'max', 'avg']
+      field_type: numeric
+  - event_timestamp:
+      agg: ['min', 'max']
+      field_type: timestamp
+relations:
+  bronze.db.txn: {source_name: bronze, table_name: txn}
