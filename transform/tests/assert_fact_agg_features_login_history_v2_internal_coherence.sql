@@ -4,7 +4,7 @@
 --   layer      : test / marginals dominate, min <= max, distinct <= count
 --   feature    : fact_agg_features_login_history_v2
 --   spec       : features/fact_agg_features_login_history_v2.yml
---   spec hash  : 1bb528412532
+--   spec hash  : 35c25bc02ee1
 --   generator  : featuremart
 --
 -- Edit the spec and run `make generate`. CI fails when a generated file

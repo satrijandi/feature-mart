@@ -88,3 +88,14 @@ relations:
   bronze.backend_ddb.customer_journal_login:
     source_name: bronze_backend_ddb
     table_name: customer_journal_login
+
+# ==============================================================================
+# 6. Settings
+# ==============================================================================
+settings:
+  # Only entities with activity inside the widest bounded window (l30d) get a
+  # row on a given as-of date. Cheaper than all_time, which snapshots every
+  # entity ever seen on every date, but it changes what a missing row means:
+  # a dormant entity has no snapshot rather than a snapshot of zeros, so a
+  # training-set join must decide explicitly how to treat one.
+  entity_spine: active_window

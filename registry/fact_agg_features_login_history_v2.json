@@ -1,6 +1,6 @@
 {
   "feature_name": "fact_agg_features_login_history_v2",
-  "spec_version": "1bb528412532",
+  "spec_version": "35c25bc02ee1",
   "feature_type": "daily",
   "owner": "i.putra",
   "description": "This table refers to bronze table customer_journal_login.\nV2 is updated version from V1, which is adding all_time login features",
@@ -19,7 +19,7 @@
   ],
   "settings": {
     "window_convention": "inclusive",
-    "entity_spine": "all_time",
+    "entity_spine": "active_window",
     "late_arrival_days": 3,
     "kmv_k": 256,
     "separator": "_",

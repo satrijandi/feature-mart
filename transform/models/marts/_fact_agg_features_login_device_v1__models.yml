@@ -1,7 +1,7 @@
 # ============================================================================
 # GENERATED FILE - DO NOT EDIT BY HAND
 #   feature   : fact_agg_features_login_device_v1
-#   spec hash : 7e3c413228a7
+#   spec hash : b9c4115e4cfb
 #   Edit the spec and run `make generate`.
 # ============================================================================
 version: 2
@@ -144,7 +144,7 @@ models:
   - name: _generated_at
     description: Wall-clock time this row was materialised.
   - name: _spec_version
-    description: Fingerprint of the spec that produced this row (7e3c413228a7). A change here explains
+    description: Fingerprint of the spec that produced this row (b9c4115e4cfb). A change here explains
       a change in feature semantics.
 - name: int_fact_agg_features_login_device_v1__daily_partials
   description: 'Reusable per-entity, per-event_date partial aggregate state. Composable by construction:

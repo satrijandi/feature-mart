@@ -4,7 +4,7 @@
 --   layer      : intermediate / daily partial aggregates
 --   feature    : fact_agg_features_login_history_v2
 --   spec       : features/fact_agg_features_login_history_v2.yml
---   spec hash  : 1bb528412532
+--   spec hash  : 35c25bc02ee1
 --   generator  : featuremart
 --
 -- Edit the spec and run `make generate`. CI fails when a generated file
@@ -193,6 +193,6 @@ select
     max(case when (UPPER(event_status) = 'FAILED') and (UPPER(os_name) NOT IN ('IOS', 'ANDROID')) then event_timestamp end) as p_max_event_timestamp_is_login_failed_is_others,
 
     {{ fs_date_offset_lit(0) }} as _computed_for,
-    '1bb528412532' as _spec_version
+    '35c25bc02ee1' as _spec_version
 from events
 group by safe_id, event_date

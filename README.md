@@ -124,6 +124,20 @@ One consequence is worth knowing: across a range with no events at all, nothing 
 That is accurate rather than stuck - the state really is sealed only through the old watermark - and the next run with data consumes the wider range.
 The watermark therefore tracks the last day that had events, not the last day attempted.
 
+### The spine decides who gets a row, and what a missing one means
+
+`entity_spine: active_window` publishes only entities active inside the widest bounded window.
+On the test fixture that is 16% fewer rows; on a real login journal with a long dormant tail the saving is far larger, because the all_time spine writes every customer ever seen on every single day.
+
+What it costs is coverage, and the cost is worth stating plainly rather than discovering downstream.
+A dormant entity has no row for that date, so an as-of equi-join misses; on the fixture, 14.9% of the population known by a given cut-off is unscorable that day.
+Treating a missing row as inactivity is usually right for counts and wrong for extrema and `all_time`, which are not zero for a dormant entity - merely unpublished.
+The generated model carries that warning at the join site, and the notebook measures the excluded population instead of letting an inner join hide it.
+
+The risk this setting introduces is that going quiet might truncate an entity's history, which would make `all_time` silently reset on their return.
+It does not: the spine narrows the mart, never the accumulator.
+A scenario asserts it directly - 28 entities drop out of the fixture's mart and all 28 keep their full history in the sealed state.
+
 ### A partition is provisional until its late-arrival window closes
 
 The partial layer keeps absorbing late events for `late_arrival_days`, which means a mart built on day *T* has stale inputs until day *T + late_arrival_days*.
@@ -187,12 +201,12 @@ So the suite is layered.
 
 | Layer | What it catches | Run |
 |---|---|---|
-| 64 unit tests | expansion, naming, Jinja composition, the refreshable-window rule, every spec guard | `make test` |
+| 66 unit tests | expansion, naming, Jinja composition, the refreshable-window rule, every spec guard | `make test` |
 | ~1,170 generated invariants | window monotonicity, marginal dominance, min <= max, non-negativity - checked in one scan per test | `make dbt-test` |
 | 25 conformance contracts | a dialect primitive behaving differently from its spec | `make dbt-test` |
 | Brute-force recomputation | a *systematic* error the pipeline would agree with itself about | `make verify` |
-| 6 operational scenarios | retry double-counting, gap loss, late-arrival misbucketing, backwards-replay data loss, stale revision-window partitions, out-of-order serving | `make e2e` |
-| Offline-store audit | published partitions that violate their own contract, whatever produced them | `make audit` |
+| 7 operational scenarios | retry double-counting, gap loss, late-arrival misbucketing, backwards-replay data loss, stale revision-window partitions, out-of-order serving, dormancy truncating history | `make e2e` |
+| Offline-store audit | published partitions that violate their own contract - future leakage, or a superseded spec version left behind by an earlier build | `make audit` |
 | Sketch accuracy | approximate counts drifting outside their bound | `make kmv` |
 
 The generated invariants are the interesting ones.
@@ -278,8 +292,10 @@ infra/               SeaweedFS + Airflow + Jupyter
 - **The `source` block is hand-written SQL and is the one dialect-specific surface.**
   The generator removes as-of-date expressions from it, but the `FROM`/`WHERE` remain as authored.
   Everything the generator emits is portable.
-- **`entity_spine: all_time` writes every entity ever seen on every as-of date.**
-  Correct for training joins, expensive at scale; `active_window` is the cheaper setting.
+- **`entity_spine` is set to `active_window`.**
+  Only entities active inside the widest bounded window get a row for a date, so a dormant entity has **no row** rather than a row of zeros - an equi-join on `(entity, target_date)` misses rather than resolving to an older snapshot.
+  Their history is not lost: the accumulator keeps every entity and they return with `all_time` intact.
+  Switch to `all_time` if consumers should not have to make that call themselves.
 - **Backfill reconstructs what was knowable at the backfill date**, not at each historical date.
   For events arriving later than `late_arrival_days`, replay day by day instead.
 - **dbt-core 1.10 emits a version-deprecation notice.**

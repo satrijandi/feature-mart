@@ -8,7 +8,13 @@ still sitting there, and they are what a training pipeline will read.
 So this audits the store itself, as a consumer sees it, and reports every
 partition that violates its own contract. `--fix` republishes the offending
 partitions from the warehouse, which is safe because the publisher re-checks
-each one; `--prune` removes those the warehouse can no longer produce.
+each one; `--prune` deletes those the warehouse can no longer reproduce.
+
+A mixed store is the failure worth naming. Change a spec's entity_spine and the
+partitions written before the change still sit there under the old semantics, so
+a consumer reading a date range silently gets two different definitions of what
+a row means. That is why the spec fingerprint travels with every row and why a
+version mismatch is treated as a contract violation rather than as metadata.
 """
 
 from __future__ import annotations
@@ -23,6 +29,25 @@ import duckdb
 
 ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_DB = ROOT / "transform" / "warehouse.duckdb"
+
+
+def delete_prefix(bucket: str, prefix: str) -> int:
+    """Delete every object under a prefix. Used only for partitions the warehouse
+    can no longer reproduce, which are therefore unrecoverable test residue or
+    the remains of a deleted spec."""
+    import boto3
+
+    s3 = boto3.client(
+        "s3",
+        endpoint_url=f"http://{os.getenv('S3_ENDPOINT', 'localhost:8433')}",
+        aws_access_key_id=os.getenv("S3_ACCESS_KEY", "featuremart"),
+        aws_secret_access_key=os.getenv("S3_SECRET_KEY", "featuremart"),
+        region_name="us-east-1",
+    )
+    listed = s3.list_objects_v2(Bucket=bucket, Prefix=prefix).get("Contents", [])
+    for obj in listed:
+        s3.delete_object(Bucket=bucket, Key=obj["Key"])
+    return len(listed)
 
 
 def connect_s3() -> duckdb.DuckDBPyConnection:
@@ -111,11 +136,9 @@ def audit(feature_name: str, bucket: str, db: Path, fix: bool, prune: bool) -> i
                 print(f"    REFUSED: {res.stdout.strip().splitlines()[-1] if res.stdout else ''}")
                 failures += 1
         elif prune:
-            print(f"  pruning {d} (not reproducible from the warehouse) ...")
-            print(
-                f"    remove manually: s3://{bucket}/feature_store/{feature_name}/target_date={d}/"
-            )
-            failures += 1
+            prefix = f"feature_store/{feature_name}/target_date={d}/"
+            n = delete_prefix(bucket, prefix)
+            print(f"  pruned {d} ({n} object(s) deleted)")
         else:
             print(f"  {d}: not in the warehouse; use --prune to drop it")
             failures += 1

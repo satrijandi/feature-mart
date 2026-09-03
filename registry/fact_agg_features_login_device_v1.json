@@ -1,6 +1,6 @@
 {
   "feature_name": "fact_agg_features_login_device_v1",
-  "spec_version": "7e3c413228a7",
+  "spec_version": "b9c4115e4cfb",
   "feature_type": "daily",
   "owner": "i.putra",
   "description": "Device and session diversity features off the same login journal.\nExists mainly to exercise the approximate distinct-count path: event_id has\none value per event, so its per-customer cardinality grows without bound and\nretaining the full key set would not scale.",
@@ -19,7 +19,7 @@
   ],
   "settings": {
     "window_convention": "inclusive",
-    "entity_spine": "all_time",
+    "entity_spine": "active_window",
     "late_arrival_days": 3,
     "kmv_k": 64,
     "separator": "_",

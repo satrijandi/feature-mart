@@ -39,10 +39,23 @@ exact contract a partition carries:
 A partition inside its revision window is therefore provisional by design, and
 comparing it against knowledge it has not been offered yet would be testing the
 wrong contract.
+
+ENTITY SPINE. Which entities a partition is supposed to contain is also part of
+the contract, and it is set per spec:
+
+  all_time       every entity ever seen gets a row on every as-of date.
+  active_window  only entities with activity inside the widest bounded window.
+
+Under active_window a dormant entity is ABSENT by design, so the comparison
+restricts itself to the entities the spine promises. It still checks that the
+mart contains exactly those and no others -- an entity missing from an
+active_window partition that should be there is as much a defect as a wrong
+number.
 """
 
 from __future__ import annotations
 
+import json
 import sys
 from datetime import date, timedelta
 from pathlib import Path
@@ -93,7 +106,29 @@ PROBES: dict[str, str] = {
 }
 
 
+def spine_predicate(registry: dict) -> str:
+    """The rows the spine promises, as a HAVING clause over the brute-force groups."""
+    spine = registry["settings"]["entity_spine"]
+    if spine == "all_time":
+        return "true"
+    widest = max((f["window_days"] for f in registry["features"] if f["window_days"]), default=0)
+    convention = registry["settings"]["window_convention"]
+    lo = widest - 1 if convention == "inclusive" else widest
+    hi = 0 if convention == "inclusive" else 1
+    return (
+        f"max(case when event_date >= date '{TARGET}' - {lo} "
+        f"and event_date <= date '{TARGET}' - {hi} then 1 else 0 end) = 1"
+    )
+
+
 def main() -> int:
+    registry = json.loads(
+        (
+            Path(__file__).resolve().parent.parent
+            / "registry"
+            / "fact_agg_features_login_history_v2.json"
+        ).read_text()
+    )
     con = duckdb.connect(str(DB), read_only=True)
 
     # The ingestion horizon this partition is contractually allowed to know
@@ -121,6 +156,7 @@ def main() -> int:
         )
         select safe_id, {", ".join(f"{sql} as {name}" for name, sql in PROBES.items())}
         from src group by safe_id
+        having {spine_predicate(registry)}
     """
     cols = ", ".join(PROBES)
     actual = f"""
@@ -142,6 +178,7 @@ def main() -> int:
     n_brute = con.execute(f"select count(*) from ({brute})").fetchone()[0]
 
     print(f"as-of date           : {TARGET}")
+    print(f"entity spine         : {registry['settings']['entity_spine']}")
     print(
         f"ingestion horizon    : {horizon}"
         f"{'  (still inside its revision window)' if horizon < settled else '  (settled)'}"

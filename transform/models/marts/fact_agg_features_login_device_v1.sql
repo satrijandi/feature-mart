@@ -4,7 +4,7 @@
 --   layer      : mart / published feature table
 --   feature    : fact_agg_features_login_device_v1
 --   spec       : features/fact_agg_features_login_device_v1.yml
---   spec hash  : 7e3c413228a7
+--   spec hash  : b9c4115e4cfb
 --   generator  : featuremart
 --
 -- Edit the spec and run `make generate`. CI fails when a generated file
@@ -50,13 +50,21 @@ at_recent as (
 
 spine as (
 
-    -- entity_spine: all_time. Every entity ever seen gets a row on every
-    -- as-of date, so a training-set join never silently drops a dormant
-    -- population. This is the expensive option by design; switch to
-    -- active_window in the spec if the daily row count outgrows its value.
+    -- entity_spine: active_window. Only entities with activity inside the
+    -- widest bounded window (30 days) get a row for this as-of date.
+    --
+    -- READ THIS BEFORE JOINING. A dormant entity gets NO ROW for this date,
+    -- not a row of zeros. Rows are partitioned by target_date, so an equi-join
+    -- on (entity, target_date) MISSES for a dormant entity rather than
+    -- resolving to an older snapshot -- its last row sits at an earlier
+    -- target_date and only a range join would find it.
+    --
+    -- So the consumer has to decide what a missing row means. Treating it as
+    -- genuine inactivity is usually right for count features and wrong for
+    -- extrema and all_time, which are not zero for a dormant entity, merely
+    -- unpublished. Switch to entity_spine: all_time if that call is not one
+    -- the consumers should be making.
     select safe_id from rollup
-    union
-    select safe_id from at_state
 
 ),
 
@@ -169,5 +177,5 @@ select
     _first_event_date,
     _last_event_date,
     {{ dbt.current_timestamp() }} as _generated_at,
-    '7e3c413228a7' as _spec_version
+    'b9c4115e4cfb' as _spec_version
 from joined

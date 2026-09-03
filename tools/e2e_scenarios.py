@@ -32,6 +32,13 @@ one corresponds to a bug this pipeline previously had:
              one case nothing can repair: the sealed fold already holds events
              that date must not see. It must fail the build rather than publish.
 
+  DORMANCY   Under entity_spine: active_window the mart stops publishing an
+             entity once it falls outside the widest bounded window. The
+             accumulator must NOT forget it -- if going quiet truncated an
+             entity's history, its all_time features would silently reset when
+             it came back, which is the failure this setting could plausibly
+             introduce.
+
 Each scenario is checked against an independent brute-force recomputation, so
 "passed" means the numbers are right, not merely that dbt exited zero. Every
 date is derived from the warehouse's current frontier, so the scenarios test the
@@ -40,6 +47,7 @@ property rather than a state left behind by an earlier session.
 
 from __future__ import annotations
 
+import json
 import os
 import subprocess
 import sys
@@ -339,6 +347,62 @@ def main() -> int:
         res.returncode == 0,
         f"served {shift(wm, 1)}",
     )
+
+    # --- 7. dormancy under a narrowed spine ---------------------------------
+    registry = json.loads(
+        (ROOT / "registry" / "fact_agg_features_login_history_v2.json").read_text()
+    )
+    spine = registry["settings"]["entity_spine"]
+    print(f"\n=== SCENARIO 7: dormancy does not truncate history (spine: {spine}) ===")
+
+    lo, hi = query(f"select min(target_date), max(target_date) from {MART}")[0]
+    dropped = query(f"""
+        select e.safe_id, e.count_event_id_all_time
+        from {MART} e
+        left join {MART} l on l.safe_id = e.safe_id and l.target_date = date '{hi}'
+        where e.target_date = date '{lo}' and l.safe_id is null
+    """)
+
+    if spine == "all_time":
+        passed &= check(
+            "spine is all_time, so no entity is ever dropped",
+            not dropped,
+            f"{len(dropped)} dropped",
+        )
+    else:
+        passed &= check(
+            "the narrowed spine actually drops dormant entities",
+            bool(dropped),
+            f"{len(dropped)} entity(ies) stopped being published",
+        )
+        # The property that matters: dropping out of the mart must not shrink
+        # the accumulator. Its count is compared against what the mart last
+        # published, so a truncation shows up as a shortfall.
+        shortfalls = []
+        for safe_id, last_published in dropped:
+            held = query(f"select p_count_event_id from {STATE} where safe_id = '{safe_id}'")
+            if not held or held[0][0] < last_published:
+                shortfalls.append((safe_id, last_published, held[0][0] if held else None))
+        passed &= check(
+            "every dropped entity's history is intact in the accumulator",
+            not shortfalls,
+            f"{len(dropped)} checked, {len(shortfalls)} truncated",
+        )
+        for sid, was, now in shortfalls[:5]:
+            print(f"      {sid}: published {was}, accumulator holds {now}")
+
+        # And the mart must not be publishing a dormant entity anyway.
+        widest = max(f["window_days"] for f in registry["features"] if f["window_days"])
+        stale = query(f"""
+            select count(*) from {MART}
+            where target_date = date '{hi}'
+              and _last_event_date < date '{hi}' - {widest - 1}
+        """)[0][0]
+        passed &= check(
+            f"no published row is older than the {widest}-day window",
+            stale == 0,
+            f"{stale} stale row(s)",
+        )
 
     print("\n" + ("ALL SCENARIOS PASSED" if passed else "SCENARIOS FAILED"))
     return 0 if passed else 1

@@ -4,7 +4,7 @@
 --   layer      : intermediate / bounded window roll-up
 --   feature    : fact_agg_features_login_device_v1
 --   spec       : features/fact_agg_features_login_device_v1.yml
---   spec hash  : 7e3c413228a7
+--   spec hash  : b9c4115e4cfb
 --   generator  : featuremart
 --
 -- Edit the spec and run `make generate`. CI fails when a generated file

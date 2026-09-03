@@ -4,7 +4,7 @@
 --   layer      : intermediate / daily partial aggregates
 --   feature    : fact_agg_features_login_device_v1
 --   spec       : features/fact_agg_features_login_device_v1.yml
---   spec hash  : 7e3c413228a7
+--   spec hash  : b9c4115e4cfb
 --   generator  : featuremart
 --
 -- Edit the spec and run `make generate`. CI fails when a generated file
@@ -109,6 +109,6 @@ select
     {{ fs_collect_set("cast(case when (UPPER(event_status) = 'FAILED') then login_source end as varchar)") }} as p_count_distinct_login_source_is_login_failed,
 
     {{ fs_date_offset_lit(0) }} as _computed_for,
-    '7e3c413228a7' as _spec_version
+    'b9c4115e4cfb' as _spec_version
 from events
 group by safe_id, event_date

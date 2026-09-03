@@ -68,6 +68,11 @@ atomic_field:
 # 5. Settings
 # ==============================================================================
 settings:
+  # Kept in step with fact_agg_features_login_history_v2: both read the same
+  # source and the same entity population, so a split spine would make any
+  # cross-mart join quietly asymmetric.
+  entity_spine: active_window
+
   # Deliberately small so the estimator is genuinely exercised by this fixture.
   # Below k distinct values a KMV sketch is exact; production would use 1024+.
   kmv_k: 64

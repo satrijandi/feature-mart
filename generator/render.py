@@ -524,11 +524,22 @@ class Renderer:
             joins.append(f"left join at_recent on {self._ent_join('spine', 'at_recent')}")
 
         if self.s.entity_spine == "active_window" and has_bounded:
+            widest = self.spec.max_window_days
             spine_note = [
                 "-- entity_spine: active_window. Only entities with activity inside the",
-                "-- widest bounded window get a row today. A dormant entity keeps its last",
-                "-- snapshot, so an as-of join still resolves, but its bounded windows will",
-                "-- read stale rather than decayed to zero.",
+                f"-- widest bounded window ({widest} days) get a row for this as-of date.",
+                "--",
+                "-- READ THIS BEFORE JOINING. A dormant entity gets NO ROW for this date,",
+                "-- not a row of zeros. Rows are partitioned by target_date, so an equi-join",
+                "-- on (entity, target_date) MISSES for a dormant entity rather than",
+                "-- resolving to an older snapshot -- its last row sits at an earlier",
+                "-- target_date and only a range join would find it.",
+                "--",
+                "-- So the consumer has to decide what a missing row means. Treating it as",
+                "-- genuine inactivity is usually right for count features and wrong for",
+                "-- extrema and all_time, which are not zero for a dormant entity, merely",
+                "-- unpublished. Switch to entity_spine: all_time if that call is not one",
+                "-- the consumers should be making.",
             ]
             spine_body = [f"select {self._ent_cols()} from rollup"]
         else:
