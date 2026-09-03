@@ -1,20 +1,20 @@
 # ============================================================================
 # GENERATED FILE - DO NOT EDIT BY HAND
 #   feature   : fact_agg_features_login_history_v2
-#   spec hash : 35c25bc02ee1
+#   spec hash : 6c9b3cc88a21
 #   Edit the spec and run `make generate`.
 # ============================================================================
 version: 2
 models:
 - name: fact_agg_features_login_history_v2
-  description: 'This table refers to bronze table customer_journal_login.
+  description: 'This table refers to bronze table customer_login.
 
     V2 is updated version from V1, which is adding all_time login features
 
 
     480 features per entity per day, expanded from 4 atomic fields x 3 condition categories x 4 time windows.
 
-    Owner: i.putra. Generated from features/fact_agg_features_login_history_v2.yml.'
+    Owner: data-platform. Generated from features/fact_agg_features_login_history_v2.yml.'
   data_tests:
   - fs_unique_combination:
       arguments:
@@ -1552,7 +1552,7 @@ models:
   - name: _generated_at
     description: Wall-clock time this row was materialised.
   - name: _spec_version
-    description: Fingerprint of the spec that produced this row (35c25bc02ee1). A change here explains
+    description: Fingerprint of the spec that produced this row (6c9b3cc88a21). A change here explains
       a change in feature semantics.
 - name: int_fact_agg_features_login_history_v2__daily_partials
   description: 'Reusable per-entity, per-event_date partial aggregate state. Composable by construction:

@@ -4,7 +4,7 @@
 --   layer      : mart / published feature table
 --   feature    : fact_agg_features_login_device_v1
 --   spec       : features/fact_agg_features_login_device_v1.yml
---   spec hash  : aaec8c5d5bcb
+--   spec hash  : 01ce520f1167
 --   generator  : featuremart
 --
 -- Edit the spec and run `make generate`. CI fails when a generated file
@@ -169,5 +169,5 @@ select
     _first_event_date,
     _last_event_date,
     {{ dbt.current_timestamp() }} as _generated_at,
-    'aaec8c5d5bcb' as _spec_version
+    '01ce520f1167' as _spec_version
 from joined

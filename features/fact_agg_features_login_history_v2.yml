@@ -3,9 +3,9 @@
 # ==============================================================================
 feature_name: "fact_agg_features_login_history_v2"
 feature_type: "daily"
-created_by: "i.putra"
+created_by: "data-platform"
 description: |
-  This table refers to bronze table customer_journal_login.
+  This table refers to bronze table customer_login.
   V2 is updated version from V1, which is adding all_time login features
 
 # ==============================================================================
@@ -21,7 +21,7 @@ source: |
     login_source,
     os_name,
     event_status
-  FROM bronze.backend_ddb.customer_journal_login
+  FROM bronze.events.customer_login
   WHERE
     ('{{ target_date }}'::DATE >= _scd_valid_from AND '{{ target_date }}'::DATE < _scd_valid_to)
     AND customer_id IS NOT NULL
@@ -85,9 +85,9 @@ atomic_field:
 # generated model reads a seeded fixture locally and the real bronze table in
 # production. Generation fails if `source` reads a relation that is not mapped.
 relations:
-  bronze.backend_ddb.customer_journal_login:
-    source_name: bronze_backend_ddb
-    table_name: customer_journal_login
+  bronze.events.customer_login:
+    source_name: bronze_events
+    table_name: customer_login
 
 # ==============================================================================
 # 6. Settings

@@ -1,9 +1,9 @@
 {
   "feature_name": "fact_agg_features_login_history_v2",
-  "spec_version": "35c25bc02ee1",
+  "spec_version": "6c9b3cc88a21",
   "feature_type": "daily",
-  "owner": "i.putra",
-  "description": "This table refers to bronze table customer_journal_login.\nV2 is updated version from V1, which is adding all_time login features",
+  "owner": "data-platform",
+  "description": "This table refers to bronze table customer_login.\nV2 is updated version from V1, which is adding all_time login features",
   "generated_at": "generated-on-demand",
   "generator_version": "0.1.0",
   "entities": [
@@ -12,9 +12,9 @@
   "timestamp_col": "event_timestamp",
   "sources": [
     {
-      "literal": "bronze.backend_ddb.customer_journal_login",
-      "dbt_source": "bronze_backend_ddb",
-      "dbt_table": "customer_journal_login"
+      "literal": "bronze.events.customer_login",
+      "dbt_source": "bronze_events",
+      "dbt_table": "customer_login"
     }
   ],
   "settings": {

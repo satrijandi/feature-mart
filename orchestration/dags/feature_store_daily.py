@@ -62,7 +62,7 @@ DBT_ENV = {
     "S3_ENDPOINT": os.getenv("S3_ENDPOINT", "seaweedfs:8333"),
     "S3_ACCESS_KEY": os.getenv("S3_ACCESS_KEY", "featuremart"),
     "S3_SECRET_KEY": os.getenv("S3_SECRET_KEY", "featuremart"),
-    "FS_BRONZE_SCHEMA": os.getenv("FS_BRONZE_SCHEMA", "bronze_backend_ddb"),
+    "FS_BRONZE_SCHEMA": os.getenv("FS_BRONZE_SCHEMA", "bronze_events"),
     "PATH": os.getenv("PATH", "/usr/local/bin:/usr/bin:/bin"),
 }
 

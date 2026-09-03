@@ -101,10 +101,7 @@ def last_event_date() -> str:
     exercise the accumulator anchor here rather than at the mart frontier.
     """
     return str(
-        query(
-            "select max(cast(event_timestamp as date)) "
-            "from bronze_backend_ddb.customer_journal_login"
-        )[0][0]
+        query("select max(cast(event_timestamp as date)) from bronze_events.customer_login")[0][0]
     )
 
 
@@ -216,7 +213,7 @@ def main() -> int:
     print("\n=== SCENARIO 3: late-arriving events land on their own event_date ===")
     horizon = frontier()
     late = query(
-        "select count(*) from bronze_backend_ddb.customer_journal_login "
+        "select count(*) from bronze_events.customer_login "
         "where cast(_scd_valid_from as date) > cast(event_timestamp as date)"
     )[0][0]
     # Had the pipeline bucketed by ingestion instead, the stored per-day totals
@@ -224,7 +221,7 @@ def main() -> int:
     mismatch = query(f"""
         with raw as (
             select cast(event_timestamp as date) as event_date, count(*) as n
-            from bronze_backend_ddb.customer_journal_login
+            from bronze_events.customer_login
             where _scd_valid_from <= date '{horizon}'
               and customer_id is not null
               and cast(event_timestamp as date) <= date '{horizon}'

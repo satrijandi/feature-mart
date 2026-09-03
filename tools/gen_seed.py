@@ -25,7 +25,7 @@ from pathlib import Path
 SEED = 20260903
 START = date(2026, 7, 1)
 END = date(2026, 9, 5)
-OUT = Path("transform/seeds/customer_journal_login.csv")
+OUT = Path("transform/seeds/customer_login.csv")
 
 OS_CHOICES = ["iOS", "Android", "Android", "iOS", "HarmonyOS", "KaiOS", "android"]
 SOURCES = ["mobile_app", "web", "partner_sdk"]

@@ -4,7 +4,7 @@
 --   layer      : staging
 --   feature    : fact_agg_features_login_history_v2
 --   spec       : features/fact_agg_features_login_history_v2.yml
---   spec hash  : 35c25bc02ee1
+--   spec hash  : 6c9b3cc88a21
 --   generator  : featuremart
 --
 -- Edit the spec and run `make generate`. CI fails when a generated file
@@ -34,7 +34,7 @@ select
     -- keeps the partials reusable across every as-of date.
 
     {{ fs_target_date() }} as _compiled_for_date
-FROM {{ source('bronze_backend_ddb', 'customer_journal_login') }}
+FROM {{ source('bronze_events', 'customer_login') }}
 WHERE
   ('{{ fs_target_date_str() }}'::DATE >= _scd_valid_from AND '{{ fs_target_date_str() }}'::DATE < _scd_valid_to)
   AND customer_id IS NOT NULL

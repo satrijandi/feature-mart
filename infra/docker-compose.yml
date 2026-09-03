@@ -40,7 +40,7 @@ x-airflow-common: &airflow-common
     # Feature-store wiring
     FS_PROJECT_ROOT: /opt/feature-mart
     FS_DBT_BIN: dbt
-    FS_BRONZE_SCHEMA: bronze_backend_ddb
+    FS_BRONZE_SCHEMA: bronze_events
     DBT_TARGET: seaweed
     DBT_DUCKDB_PATH: /opt/feature-mart/transform/warehouse.duckdb
     S3_ENDPOINT: seaweedfs:8333

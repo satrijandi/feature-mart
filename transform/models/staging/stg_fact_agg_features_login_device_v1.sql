@@ -4,7 +4,7 @@
 --   layer      : staging
 --   feature    : fact_agg_features_login_device_v1
 --   spec       : features/fact_agg_features_login_device_v1.yml
---   spec hash  : aaec8c5d5bcb
+--   spec hash  : 01ce520f1167
 --   generator  : featuremart
 --
 -- Edit the spec and run `make generate`. CI fails when a generated file
@@ -27,7 +27,7 @@ select
     event_status,
     cast(event_timestamp as date) as event_date,
     {{ fs_target_date() }} as _compiled_for_date
-FROM {{ source('bronze_backend_ddb', 'customer_journal_login') }}
+FROM {{ source('bronze_events', 'customer_login') }}
 WHERE
   ('{{ fs_target_date_str() }}'::DATE >= _scd_valid_from AND '{{ fs_target_date_str() }}'::DATE < _scd_valid_to)
   AND customer_id IS NOT NULL

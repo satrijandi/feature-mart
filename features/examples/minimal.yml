@@ -5,7 +5,7 @@ source: |
     customer_id AS safe_id,
     event_id,
     event_timestamp
-  FROM bronze.backend_ddb.customer_journal_login
+  FROM bronze.events.customer_login
   WHERE customer_id IS NOT NULL
 
 entities: ["safe_id"]
@@ -18,6 +18,6 @@ atomic_field:
       agg: ['count']
 
 relations:
-  bronze.backend_ddb.customer_journal_login:
-    source_name: bronze_backend_ddb
-    table_name: customer_journal_login
+  bronze.events.customer_login:
+    source_name: bronze_events
+    table_name: customer_login

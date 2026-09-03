@@ -148,7 +148,7 @@ def main() -> int:
                 customer_id as safe_id,
                 device_id, event_id, event_timestamp, os_name, event_status,
                 cast(event_timestamp as date) as event_date
-            from bronze_backend_ddb.customer_journal_login
+            from bronze_events.customer_login
             where cast(event_timestamp as date) <= date '{TARGET}'   -- as-of-event
               and _scd_valid_from <= date '{horizon}'                -- ingestion horizon
               and date '{TARGET}' < _scd_valid_to

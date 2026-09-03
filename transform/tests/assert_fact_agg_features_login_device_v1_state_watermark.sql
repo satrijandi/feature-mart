@@ -4,7 +4,7 @@
 --   layer      : test / all_time state is usable for this as-of date
 --   feature    : fact_agg_features_login_device_v1
 --   spec       : features/fact_agg_features_login_device_v1.yml
---   spec hash  : aaec8c5d5bcb
+--   spec hash  : 01ce520f1167
 --   generator  : featuremart
 --
 -- Edit the spec and run `make generate`. CI fails when a generated file

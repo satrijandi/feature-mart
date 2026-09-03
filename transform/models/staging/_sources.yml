@@ -5,11 +5,11 @@
 # ============================================================================
 version: 2
 sources:
-- name: bronze_backend_ddb
+- name: bronze_events
   description: Upstream append-only source feeding 1 table(s).
-  schema: '{{ env_var(''FS_BRONZE_SCHEMA'', ''bronze_backend_ddb'') }}'
+  schema: '{{ env_var(''FS_BRONZE_SCHEMA'', ''bronze_events'') }}'
   tables:
-  - name: customer_journal_login
+  - name: customer_login
     description: 'Immutable append-only event log.
 
       The feature store relies on rows for a past event_date never changing once written; the reusable

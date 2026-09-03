@@ -46,7 +46,7 @@ def main() -> int:
         with src as (
             select customer_id as safe_id, event_id, event_status,
                    cast(event_timestamp as date) as event_date
-            from bronze_backend_ddb.customer_journal_login
+            from bronze_events.customer_login
             where cast(event_timestamp as date) <= date '{TARGET}'
               and _scd_valid_from <= date '{horizon}'
               and date '{TARGET}' < _scd_valid_to

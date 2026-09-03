@@ -33,8 +33,8 @@ models:
 
 seeds:
   feature_mart:
-    +schema: bronze_backend_ddb
-    customer_journal_login:
+    +schema: bronze_events
+    customer_login:
       +column_types:
         event_timestamp: timestamp
         _scd_valid_from: timestamp

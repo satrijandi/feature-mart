@@ -1,7 +1,7 @@
 {#-
   Use custom schema names verbatim rather than dbt's default of prefixing them
   with the target schema. The feature store has a fixed layer layout
-  (bronze_backend_ddb / staging / intermediate / marts) and the same names
+  (bronze_events / staging / intermediate / marts) and the same names
   should hold in every environment; the environment is already distinguished by
   the database or catalog.
 -#}

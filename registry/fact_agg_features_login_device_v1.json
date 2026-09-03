@@ -1,8 +1,8 @@
 {
   "feature_name": "fact_agg_features_login_device_v1",
-  "spec_version": "aaec8c5d5bcb",
+  "spec_version": "01ce520f1167",
   "feature_type": "daily",
-  "owner": "i.putra",
+  "owner": "data-platform",
   "description": "Device and session diversity features off the same login journal.\nExists mainly to exercise the approximate distinct-count path: event_id has\none value per event, so its per-customer cardinality grows without bound and\nretaining the full key set would not scale.",
   "generated_at": "generated-on-demand",
   "generator_version": "0.1.0",
@@ -12,9 +12,9 @@
   "timestamp_col": "event_timestamp",
   "sources": [
     {
-      "literal": "bronze.backend_ddb.customer_journal_login",
-      "dbt_source": "bronze_backend_ddb",
-      "dbt_table": "customer_journal_login"
+      "literal": "bronze.events.customer_login",
+      "dbt_source": "bronze_events",
+      "dbt_table": "customer_login"
     }
   ],
   "settings": {
