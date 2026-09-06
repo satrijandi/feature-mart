@@ -24,8 +24,8 @@ from pathlib import Path
 
 import duckdb
 
-ROOT = Path(__file__).resolve().parent.parent
-DEFAULT_DB = ROOT / "transform" / "warehouse.duckdb"
+from tools.paths import DB as DEFAULT_DB
+from tools.paths import REGISTRY_DIR
 
 
 def configure_s3(con: duckdb.DuckDBPyConnection) -> None:
@@ -39,7 +39,7 @@ def configure_s3(con: duckdb.DuckDBPyConnection) -> None:
 
 
 def publish(feature_name: str, target_date: str, db: Path, bucket: str) -> int:
-    registry_path = ROOT / "registry" / f"{feature_name}.json"
+    registry_path = REGISTRY_DIR / f"{feature_name}.json"
     if not registry_path.exists():
         raise SystemExit(f"no registry for {feature_name}; run `make generate` first")
     registry = json.loads(registry_path.read_text())

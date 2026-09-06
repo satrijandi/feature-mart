@@ -13,6 +13,13 @@ cases that break naive feature pipelines:
   * every hour of the day    so all four behavioural_time buckets fire
   * late-arriving rows       ingested after the event date, inside the
                             late-arrival window, to exercise seal-and-tail
+
+The fixture is loaded straight into the warehouse as `bronze_events.customer_login`
+rather than through `dbt seed`. The dbt project in the repository root is generated
+output that knows nothing about any particular source data, and a seed block
+naming this fixture would put that knowledge back into it. In production the
+source table is written by an upstream pipeline; here it is written by this
+script, and dbt sees the same thing in both cases.
 """
 
 from __future__ import annotations
@@ -20,12 +27,48 @@ from __future__ import annotations
 import csv
 import random
 from datetime import date, datetime, timedelta
-from pathlib import Path
+
+import duckdb
+
+from tools.paths import DB, SEEDS
 
 SEED = 20260903
 START = date(2026, 7, 1)
 END = date(2026, 9, 5)
-OUT = Path("transform/seeds/customer_login.csv")
+OUT = SEEDS / "customer_login.csv"
+SCHEMA = "bronze_events"
+TABLE = "customer_login"
+
+# Declared rather than sniffed. The timestamp columns drive both the event date
+# and the SCD validity window, and a column silently inferred as VARCHAR would
+# make every date comparison in the pipeline a string comparison.
+COLUMN_TYPES = {
+    "event_id": "VARCHAR",
+    "customer_id": "VARCHAR",
+    "device_id": "VARCHAR",
+    "event_timestamp": "TIMESTAMP",
+    "login_source": "VARCHAR",
+    "os_name": "VARCHAR",
+    "event_status": "VARCHAR",
+    "_scd_valid_from": "TIMESTAMP",
+    "_scd_valid_to": "TIMESTAMP",
+}
+
+
+def load(csv_path, db) -> int:
+    """Replace the source table with the fixture, as an upstream load would."""
+    types = ", ".join(f"'{k}': '{v}'" for k, v in COLUMN_TYPES.items())
+    con = duckdb.connect(str(db))
+    try:
+        con.execute(f"create schema if not exists {SCHEMA}")
+        con.execute(
+            f"create or replace table {SCHEMA}.{TABLE} as "
+            f"select * from read_csv('{csv_path}', header=true, columns={{{types}}})"
+        )
+        return con.execute(f"select count(*) from {SCHEMA}.{TABLE}").fetchone()[0]
+    finally:
+        con.close()
+
 
 OS_CHOICES = ["iOS", "Android", "Android", "iOS", "HarmonyOS", "KaiOS", "android"]
 SOURCES = ["mobile_app", "web", "partner_sdk"]
@@ -105,6 +148,9 @@ def main() -> None:
     late = sum(1 for r in rows if r["_scd_valid_from"][:10] != r["event_timestamp"][:10])
     nulls = sum(1 for r in rows if not r["device_id"])
     print(f"{OUT}: {len(rows)} rows, {cid} customers, {late} late-arriving, {nulls} null device")
+
+    loaded = load(OUT, DB)
+    print(f"{DB}: {SCHEMA}.{TABLE} loaded with {loaded} rows")
 
 
 if __name__ == "__main__":

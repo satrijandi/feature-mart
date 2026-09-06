@@ -16,5 +16,7 @@ RUN pip install --no-cache-dir \
       "pyyaml>=6.0.2" "jinja2>=3.1.4" "click>=8.1.7" "boto3>=1.35" \
  && pip install --no-cache-dir --no-deps /tmp/build
 
-ENV PYTHONPATH=/opt/feature-mart
-WORKDIR /opt/feature-mart
+# Tasks run from the showcase directory, which is what makes `python -m tools.x`
+# resolve. The compiler is installed into site-packages above, so nothing here
+# depends on the repository layout beyond that.
+WORKDIR /opt/feature-mart/showcase

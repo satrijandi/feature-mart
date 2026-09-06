@@ -58,11 +58,11 @@ from __future__ import annotations
 import json
 import sys
 from datetime import date, timedelta
-from pathlib import Path
 
 import duckdb
 
-DB = Path("transform/warehouse.duckdb")
+from tools.paths import DB, REGISTRY_DIR
+
 TARGET = sys.argv[1] if len(sys.argv) > 1 else "2026-09-03"
 LATE_ARRIVAL_DAYS = 3  # settings.late_arrival_days in the feature spec
 
@@ -122,13 +122,7 @@ def spine_predicate(registry: dict) -> str:
 
 
 def main() -> int:
-    registry = json.loads(
-        (
-            Path(__file__).resolve().parent.parent
-            / "registry"
-            / "fact_agg_features_login_history_v2.json"
-        ).read_text()
-    )
+    registry = json.loads((REGISTRY_DIR / "fact_agg_features_login_history_v2.json").read_text())
     con = duckdb.connect(str(DB), read_only=True)
 
     # The ingestion horizon this partition is contractually allowed to know

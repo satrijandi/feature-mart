@@ -1,0 +1,32 @@
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+
+# dbt run artefacts. Every showcase run directs target/ and logs/ here so that
+# executing the pipeline never dirties the generated project in ../transform.
+target/
+logs/
+.user.yml
+
+# Local warehouse. The pipeline is reproducible from `make seed` plus
+# `make dbt-backfill`, so the database file itself is never committed.
+warehouse.duckdb
+warehouse.duckdb.wal
+
+# Generated fixture. Rebuild deterministically with `make seed`. Matched by
+# glob rather than by filename: naming a single file meant that renaming the
+# seed silently un-ignored the old one and swept 1.7 MB of generated data into
+# a commit.
+seeds/*.csv
+
+# Airflow
+.airflow/
+airflow.db
+airflow.cfg
+webserver_config.py
+
+# Jupyter
+.ipynb_checkpoints/

@@ -1,5 +1,5 @@
 # =============================================================================
-# Local rehearsal stack.
+# Local rehearsal stack for the end-to-end showcase.
 #
 # The point is fidelity, not convenience: the same generated dbt models, the
 # same registry-derived DAG and the same invariant tests that would run against
@@ -16,7 +16,7 @@
 # it exclusively, so a notebook holding it open would block the scheduler.
 # Notebooks read the published Parquet on S3, as any other consumer would.
 #
-# Bring up everything:      make stack-up
+# Bring up everything:      make -C showcase stack-up
 # Just the lake + notebook: docker compose --profile lake --profile notebook up -d
 #
 # Host ports default to unconventional values (S3 8433, Airflow 8081, Jupyter
@@ -28,26 +28,31 @@ name: feature-mart
 
 x-airflow-common: &airflow-common
   build:
-    context: ..
-    dockerfile: infra/Dockerfile.airflow
+    # The repository root, because the image needs the compiler and the
+    # generated dbt project as well as this directory's operational tools.
+    context: ../..
+    dockerfile: showcase/infra/Dockerfile.airflow
   environment: &airflow-env
     AIRFLOW__CORE__EXECUTOR: LocalExecutor
     AIRFLOW__CORE__LOAD_EXAMPLES: "false"
     AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "false"
     AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres/airflow
     AIRFLOW__WEBSERVER__EXPOSE_CONFIG: "true"
-    AIRFLOW__CORE__DAGS_FOLDER: /opt/feature-mart/orchestration/dags
-    # Feature-store wiring
+    AIRFLOW__CORE__DAGS_FOLDER: /opt/feature-mart/showcase/orchestration/dags
+    # Feature-store wiring. FS_PROJECT_ROOT is the compiler's output -- the
+    # generated dbt project and registry; FS_SHOWCASE_ROOT is the runtime that
+    # executes it. A production deployment changes the second, not the first.
     FS_PROJECT_ROOT: /opt/feature-mart
+    FS_SHOWCASE_ROOT: /opt/feature-mart/showcase
     FS_DBT_BIN: dbt
     FS_BRONZE_SCHEMA: bronze_events
     DBT_TARGET: seaweed
-    DBT_DUCKDB_PATH: /opt/feature-mart/transform/warehouse.duckdb
+    DBT_DUCKDB_PATH: /opt/feature-mart/showcase/warehouse.duckdb
     S3_ENDPOINT: seaweedfs:8333
     S3_ACCESS_KEY: featuremart
     S3_SECRET_KEY: featuremart
   volumes:
-    - ..:/opt/feature-mart
+    - ../..:/opt/feature-mart
   depends_on:
     postgres:
       condition: service_healthy
@@ -164,8 +169,8 @@ services:
   # --- analysis ------------------------------------------------------------
   jupyter:
     build:
-      context: ..
-      dockerfile: infra/Dockerfile.jupyter
+      context: ../..
+      dockerfile: showcase/infra/Dockerfile.jupyter
     profiles: ["notebook", "full"]
     ports:
       - "${FS_JUPYTER_PORT:-8900}:8888"
@@ -179,12 +184,12 @@ services:
       S3_ACCESS_KEY: featuremart
       S3_SECRET_KEY: featuremart
     volumes:
-      - ..:/opt/feature-mart
-    working_dir: /opt/feature-mart
+      - ../..:/opt/feature-mart
+    working_dir: /opt/feature-mart/showcase
     command: >
       jupyter lab --ip=0.0.0.0 --port=8888 --no-browser --allow-root
       --IdentityProvider.token='' --ServerApp.password=''
-      --ServerApp.root_dir=/opt/feature-mart
+      --ServerApp.root_dir=/opt/feature-mart/showcase
 
 volumes:
   seaweed-data:

@@ -15,9 +15,14 @@ env:
 jobs:
 
   # ---------------------------------------------------------------------------
-  # The GitOps gate. A spec and its generated models cannot be allowed to
-  # disagree, so this regenerates from the specs and fails on any difference.
-  # Hand-editing a model, or changing a spec without regenerating, stops here.
+  # The core repository: a spec compiler and nothing else. This job installs no
+  # dbt, no warehouse and no object store, which is the point -- if compiling a
+  # spec ever needed one of them, this job would stop working.
+  #
+  # It is also the GitOps gate. A spec and its generated models cannot be
+  # allowed to disagree, so it regenerates from the specs and fails on any
+  # difference. Hand-editing a model, or changing a spec without regenerating,
+  # stops here.
   # ---------------------------------------------------------------------------
   generator:
     name: generator (drift, lint, unit tests)
@@ -30,6 +35,15 @@ jobs:
       - run: uv venv --python 3.11
       - run: uv pip install -e ".[dev]"
 
+      - name: The compiler pulls in no runtime
+        # A dependency on dbt would make the compiler impossible to embed
+        # anywhere that does not already run dbt. Assert it rather than trust it.
+        run: |
+          if .venv/bin/python -c "import dbt" 2>/dev/null; then
+            echo "dbt is installed by the core package; it must not be"; exit 1
+          fi
+          echo "core install has no dbt, as intended"
+
       - name: Specs are valid
         run: .venv/bin/python -m generator.cli validate
 
@@ -37,28 +51,26 @@ jobs:
         run: .venv/bin/python -m generator.cli generate --check
 
       - name: Example specs in the authoring reference still parse
-        run: |
-          for f in features/examples/*.yml; do
-            .venv/bin/python -m generator.cli explain "$f" > /dev/null
-            echo "ok $f"
-          done
+        run: make examples
 
       - name: Lint
-        run: |
-          .venv/bin/ruff check generator tools tests
-          .venv/bin/ruff format --check generator tools tests
+        run: make lint
 
       - name: Unit tests
-        run: .venv/bin/python -m pytest tests -q
+        run: make test
 
   # ---------------------------------------------------------------------------
-  # Runs the real pipeline against DuckDB: a backfill, a sequence of daily
-  # increments, every generated invariant, adapter conformance, an independent
-  # brute-force recomputation, and the operational scenarios (retry, gap, late
-  # arrival). This is the job that would catch a wrong number.
+  # The showcase: runs the generated project against DuckDB. A backfill, a
+  # sequence of daily increments, every generated invariant, adapter
+  # conformance, an independent brute-force recomputation, and the operational
+  # scenarios (retry, gap, late arrival, replay, revision, ordering). This is
+  # the job that would catch a wrong number.
+  #
+  # Everything it runs is a target in showcase/Makefile, so CI and a laptop take
+  # exactly the same path.
   # ---------------------------------------------------------------------------
   pipeline:
-    name: pipeline (dbt + invariants + brute force)
+    name: showcase (dbt + invariants + brute force)
     runs-on: ubuntu-latest
     needs: generator
     steps:
@@ -66,56 +78,24 @@ jobs:
       - uses: astral-sh/setup-uv@v5
         with:
           enable-cache: true
-      - run: uv venv --python 3.11
-      - run: uv pip install -e ".[dbt,dev]"
+      - name: Install the compiler plus a dbt runtime
+        run: cd showcase && uv venv --python 3.11 && uv pip install -e .. -e .
 
-      - name: Build the fixture
-        run: |
-          .venv/bin/python tools/gen_seed.py
-          cd transform && ../.venv/bin/dbt seed --vars '{target_date: 2026-07-01}'
-        env:
-          DBT_PROFILES_DIR: ${{ github.workspace }}/transform
-
-      - name: Backfill, then run a fortnight of daily increments
-        # Each day builds T and then refreshes the revision window behind it,
-        # exactly as the Airflow DAG does, so CI exercises the real cadence
-        # rather than a simplified one.
-        run: |
-          cd transform
-          ../.venv/bin/dbt run --vars '{target_date: 2026-08-20, fs_backfill_from: 2026-07-01}'
-          for d in 2026-08-21 2026-08-22 2026-08-23 2026-08-24 2026-08-25 2026-08-26 \
-                   2026-08-27 2026-08-28 2026-08-29 2026-08-30 2026-08-31 \
-                   2026-09-01 2026-09-02 2026-09-03; do
-            ../.venv/bin/dbt run --vars "{target_date: $d}" -q
-            for i in 1 2 3; do
-              r=$(python3 -c "import datetime;print(datetime.date.fromisoformat('$d')-datetime.timedelta(days=$i))")
-              ../.venv/bin/dbt run --select tag:fact_agg_features_login_history_v2 \
-                                            tag:fact_agg_features_login_device_v1 \
-                                   --vars "{target_date: $r}" -q
-            done
-          done
-        env:
-          DBT_PROFILES_DIR: ${{ github.workspace }}/transform
-
-      - name: Schema tests, generated invariants, adapter conformance
-        run: |
-          cd transform && ../.venv/bin/dbt test --vars '{target_date: 2026-09-03}'
-        env:
-          DBT_PROFILES_DIR: ${{ github.workspace }}/transform
-
-      - name: Independent brute-force recomputation
-        # Several dates, not just the newest: a settled partition and a
-        # provisional one exercise different paths through the state merge.
-        run: |
-          for d in 2026-08-25 2026-08-31 2026-09-01 2026-09-02 2026-09-03; do
-            .venv/bin/python tools/verify_against_bruteforce.py $d
-          done
+      - name: The whole end-to-end gate
+        # One target, so CI and a laptop take exactly the same path: lint, unit
+        # tests, fixture, backfill, a fortnight of increments with the revision
+        # window refreshed behind each one, every generated invariant, adapter
+        # conformance, brute-force recomputation on five dates, sketch accuracy,
+        # the operational scenarios, and a docs build.
+        run: make -C showcase ci
 
       - name: No partition references events after its own as-of date
+        # Independently of the pipeline that produced it: a separate process,
+        # reading the marts directly, over both specs.
         run: |
-          .venv/bin/python - <<'PY'
+          showcase/.venv/bin/python - <<'PY'
           import duckdb, sys
-          con = duckdb.connect("transform/warehouse.duckdb", read_only=True)
+          con = duckdb.connect("showcase/warehouse.duckdb", read_only=True)
           bad = 0
           for m in ("fact_agg_features_login_history_v2",
                     "fact_agg_features_login_device_v1"):
@@ -128,26 +108,20 @@ jobs:
           sys.exit(1 if bad else 0)
           PY
 
-      - name: Approximate-distinct accuracy
-        run: .venv/bin/python tools/verify_kmv_accuracy.py 2026-09-03
-
-      - name: Operational scenarios (retry, gap, late arrival, replay, revision, ordering)
-        run: .venv/bin/python tools/e2e_scenarios.py
-
-      - name: dbt docs build
-        run: |
-          cd transform && ../.venv/bin/dbt docs generate --vars '{target_date: 2026-09-03}'
-        env:
-          DBT_PROFILES_DIR: ${{ github.workspace }}/transform
+      - name: The generated project is unchanged by running it
+        # Executing the pipeline must not write anything back into the committed
+        # dbt project: it is generator output, and a stray artefact there would
+        # show up as drift in someone else's pull request.
+        run: git diff --exit-code --stat -- transform && git status --porcelain -- transform
 
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: dbt-artifacts
           path: |
-            transform/target/manifest.json
-            transform/target/run_results.json
-            transform/logs/dbt.log
+            showcase/target/manifest.json
+            showcase/target/run_results.json
+            showcase/logs/dbt.log
           retention-days: 7
 
   # ---------------------------------------------------------------------------
@@ -173,7 +147,8 @@ jobs:
           .venv/bin/python - <<'PY'
           import os
           from airflow.models import DagBag
-          bag = DagBag(os.path.join(os.environ["FS_PROJECT_ROOT"], "orchestration/dags"),
+          bag = DagBag(os.path.join(os.environ["FS_PROJECT_ROOT"],
+                                    "showcase/orchestration/dags"),
                        include_examples=False)
           if bag.import_errors:
               for path, err in bag.import_errors.items():

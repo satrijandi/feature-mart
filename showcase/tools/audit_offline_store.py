@@ -27,8 +27,8 @@ from pathlib import Path
 
 import duckdb
 
-ROOT = Path(__file__).resolve().parent.parent
-DEFAULT_DB = ROOT / "transform" / "warehouse.duckdb"
+from tools.paths import DB as DEFAULT_DB
+from tools.paths import PYTHON, REGISTRY_DIR, SHOWCASE
 
 
 def delete_prefix(bucket: str, prefix: str) -> int:
@@ -61,7 +61,7 @@ def connect_s3() -> duckdb.DuckDBPyConnection:
 
 
 def audit(feature_name: str, bucket: str, db: Path, fix: bool, prune: bool) -> int:
-    registry = json.loads((ROOT / "registry" / f"{feature_name}.json").read_text())
+    registry = json.loads((REGISTRY_DIR / f"{feature_name}.json").read_text())
     expected_spec = registry["spec_version"]
     base = f"s3://{bucket}/feature_store/{feature_name}"
 
@@ -123,12 +123,13 @@ def audit(feature_name: str, bucket: str, db: Path, fix: bool, prune: bool) -> i
             print(f"  republishing {d} ...")
             res = subprocess.run(
                 [
-                    str(ROOT / ".venv/bin/python"),
-                    str(ROOT / "tools/publish_offline_store.py"),
+                    str(PYTHON),
+                    "-m",
+                    "tools.publish_offline_store",
                     feature_name,
                     d.isoformat(),
                 ],
-                cwd=ROOT,
+                cwd=SHOWCASE,
                 capture_output=True,
                 text=True,
             )
@@ -156,9 +157,7 @@ def main() -> int:
     a = ap.parse_args()
 
     names = (
-        [a.feature_name]
-        if a.feature_name
-        else sorted(p.stem for p in (ROOT / "registry").glob("*.json"))
+        [a.feature_name] if a.feature_name else sorted(p.stem for p in REGISTRY_DIR.glob("*.json"))
     )
     rc = 0
     for i, name in enumerate(names):

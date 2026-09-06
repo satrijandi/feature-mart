@@ -6,31 +6,13 @@ __pycache__/
 .ruff_cache/
 *.egg-info/
 
-# dbt
+# dbt artefacts, if the generated project is ever run in place. The showcase
+# directs its own runs into showcase/ instead, so nothing here appears during
+# an ordinary `make -C showcase` cycle.
 transform/target/
 transform/dbt_packages/
 transform/logs/
 transform/.user.yml
 
-# Local warehouse. The pipeline is reproducible from the seed plus `make
-# dbt-backfill`, so the database file itself is never committed.
-transform/warehouse.duckdb
-transform/warehouse.duckdb.wal
-
-# Airflow
-.airflow/
-airflow.db
-airflow.cfg
-webserver_config.py
-
-# Jupyter
-.ipynb_checkpoints/
-
 # OS
 .DS_Store
-
-# Generated fixture. Rebuild deterministically with `python tools/gen_seed.py`.
-# Matched by glob rather than by filename: naming a single file meant that
-# renaming the seed silently un-ignored the old one and swept 1.7 MB of
-# generated data into a commit.
-transform/seeds/*.csv

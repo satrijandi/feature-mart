@@ -1,0 +1,51 @@
+[project]
+name = "feature-mart-showcase"
+version = "0.1.0"
+description = "End-to-end showcase: runs the generated dbt project on a rehearsal stack"
+requires-python = ">=3.11,<3.12"
+
+# Everything the core repository deliberately does not depend on. The compiler
+# emits a dbt project; proving that project produces the right numbers needs a
+# dbt runtime, a warehouse, an object store client and a notebook stack, and
+# they live here so that installing the compiler never pulls them in.
+#
+# `feature-mart` is the compiler itself, installed from the repository root:
+#   uv pip install -e .. -e .
+dependencies = [
+    "feature-mart",
+    "dbt-core>=1.9.0,<1.11",
+    "dbt-duckdb>=1.9.0,<1.11",
+    "duckdb>=1.1.3",
+    "boto3>=1.35.0",
+    "pandas>=2.2.0",
+    "pyarrow>=18.0.0",
+    "matplotlib>=3.9.0",
+    "jupyterlab>=4.3.0",
+    "pytest>=8.3.0",
+    "ruff>=0.8.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+# The showcase is a set of scripts run from this directory, not a library
+# anything imports. Installing it means installing its dependencies; there is no
+# package to ship.
+[tool.hatch.build.targets.wheel]
+bypass-selection = true
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+ignore = ["E501"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+# `tools` is importable from tests and from `python -m tools.<name>`, both of
+# which run with this directory as the working directory.
+pythonpath = ["."]

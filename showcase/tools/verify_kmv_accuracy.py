@@ -23,11 +23,11 @@ from __future__ import annotations
 import math
 import sys
 from datetime import date, timedelta
-from pathlib import Path
 
 import duckdb
 
-DB = Path("transform/warehouse.duckdb")
+from tools.paths import DB
+
 TARGET = sys.argv[1] if len(sys.argv) > 1 else "2026-09-03"
 K = 64  # settings.kmv_k in features/fact_agg_features_login_device_v1.yml
 LATE_ARRIVAL_DAYS = 3

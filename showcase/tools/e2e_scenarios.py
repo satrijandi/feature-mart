@@ -48,32 +48,34 @@ property rather than a state left behind by an earlier session.
 from __future__ import annotations
 
 import json
-import os
 import subprocess
 import sys
 from datetime import date, timedelta
-from pathlib import Path
 
 import duckdb
 
-ROOT = Path(__file__).resolve().parent.parent
-TRANSFORM = ROOT / "transform"
-DB = TRANSFORM / "warehouse.duckdb"
+from tools.paths import DB, DBT, PYTHON, REGISTRY_DIR, SHOWCASE, dbt_env
+
 MART = "marts.fact_agg_features_login_history_v2"
 STATE = "intermediate.int_fact_agg_features_login_history_v2__alltime_state"
 PARTIALS_MODEL = "int_fact_agg_features_login_history_v2__daily_partials"
 PARTIALS_TABLE = f"intermediate.{PARTIALS_MODEL}"
 
 
+def dbt_run(*args: str, target_date: str, quiet: bool = True) -> subprocess.CompletedProcess:
+    """Invoke dbt on the generated project without asserting it succeeded.
+
+    Two scenarios are about dbt *refusing* to build, so failure is a result here
+    rather than an error. `dbt()` is the wrapper for the ordinary case.
+    """
+    cmd = [str(DBT), *args, "--vars", f"{{target_date: {target_date}}}"]
+    if quiet:
+        cmd.append("-q")
+    return subprocess.run(cmd, cwd=SHOWCASE, capture_output=True, text=True, env=dbt_env())
+
+
 def dbt(*args: str, target_date: str) -> None:
-    cmd = [str(ROOT / ".venv/bin/dbt"), *args, "--vars", f"{{target_date: {target_date}}}", "-q"]
-    res = subprocess.run(
-        cmd,
-        cwd=TRANSFORM,
-        capture_output=True,
-        text=True,
-        env={**os.environ, "DBT_PROFILES_DIR": str(TRANSFORM)},
-    )
+    res = dbt_run(*args, target_date=target_date)
     if res.returncode != 0:
         print(res.stdout[-3000:], res.stderr[-2000:])
         raise SystemExit(f"dbt {' '.join(args)} failed for {target_date}")
@@ -138,8 +140,8 @@ def partial_totals() -> dict:
 
 def brute_force_matches(day: str) -> bool:
     res = subprocess.run(
-        [str(ROOT / ".venv/bin/python"), str(ROOT / "tools/verify_against_bruteforce.py"), day],
-        cwd=ROOT,
+        [str(PYTHON), "-m", "tools.verify_against_bruteforce", day],
+        cwd=SHOWCASE,
         capture_output=True,
         text=True,
     )
@@ -269,21 +271,7 @@ def main() -> int:
     print(f"  (rebuilding {', '.join(window)} behind the frontier {day})")
     ok_all = True
     for d in window:
-        res = subprocess.run(
-            [
-                str(ROOT / ".venv/bin/dbt"),
-                "build",
-                "--select",
-                "tag:fact_agg_features_login_history_v2",
-                "--vars",
-                f"{{target_date: {d}}}",
-                "-q",
-            ],
-            cwd=TRANSFORM,
-            capture_output=True,
-            text=True,
-            env={**os.environ, "DBT_PROFILES_DIR": str(TRANSFORM)},
-        )
+        res = dbt_run("build", "--select", "tag:fact_agg_features_login_history_v2", target_date=d)
         built = res.returncode == 0
         exact = brute_force_matches(d) if built else False
         ok_all &= built and exact
@@ -306,38 +294,24 @@ def main() -> int:
     wm = state_watermark()
     behind = shift(wm, -1)
     print(f"  (watermark is {wm}; attempting to serve {behind})")
-    res = subprocess.run(
-        [
-            str(ROOT / ".venv/bin/dbt"),
-            "test",
-            "--select",
-            "assert_fact_agg_features_login_history_v2_state_watermark",
-            "--vars",
-            f"{{target_date: {behind}}}",
-        ],
-        cwd=TRANSFORM,
-        capture_output=True,
-        text=True,
-        env={**os.environ, "DBT_PROFILES_DIR": str(TRANSFORM)},
+    res = dbt_run(
+        "test",
+        "--select",
+        "assert_fact_agg_features_login_history_v2_state_watermark",
+        target_date=behind,
+        quiet=False,
     )
     passed &= check(
         "watermark guard refuses a date behind the sealed state",
         res.returncode != 0,
         "guard fired" if res.returncode != 0 else "guard did NOT fire",
     )
-    res = subprocess.run(
-        [
-            str(ROOT / ".venv/bin/dbt"),
-            "test",
-            "--select",
-            "assert_fact_agg_features_login_history_v2_state_watermark",
-            "--vars",
-            f"{{target_date: {shift(wm, 1)}}}",
-        ],
-        cwd=TRANSFORM,
-        capture_output=True,
-        text=True,
-        env={**os.environ, "DBT_PROFILES_DIR": str(TRANSFORM)},
+    res = dbt_run(
+        "test",
+        "--select",
+        "assert_fact_agg_features_login_history_v2_state_watermark",
+        target_date=shift(wm, 1),
+        quiet=False,
     )
     passed &= check(
         "and permits a date at or after it",
@@ -352,7 +326,7 @@ def main() -> int:
     # gets published, and must never decide who the accumulator remembers.
     print("\n=== SCENARIO 7: each spec honours its own entity_spine ===")
 
-    for reg_path in sorted((ROOT / "registry").glob("*.json")):
+    for reg_path in sorted(REGISTRY_DIR.glob("*.json")):
         registry = json.loads(reg_path.read_text())
         name = registry["feature_name"]
         spine = registry["settings"]["entity_spine"]

@@ -1,5 +1,11 @@
-# Local + CI profile. Production targets are wired through env vars so the same
-# committed models run unchanged on DuckDB, Databricks and Snowflake.
+# The showcase's profile. It is deliberately not part of the generated dbt
+# project: ../transform declares which profile it wants and nothing about how to
+# connect, so the same committed models run unchanged here, on Databricks and on
+# Snowflake. A production deployment supplies its own file in place of this one.
+#
+# DBT_DUCKDB_PATH is set by the Makefile and by the DAG. The bare default only
+# applies when dbt is invoked by hand, and then resolves against the working
+# directory.
 feature_mart:
   target: "{{ env_var('DBT_TARGET', 'local') }}"
   outputs:

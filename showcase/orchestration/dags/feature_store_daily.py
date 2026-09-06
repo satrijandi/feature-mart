@@ -1,8 +1,8 @@
 """Daily feature-store DAG, derived from the generated registry.
 
 The DAG is not hand-maintained. It reads registry/*.json -- the same artefact
-the generator commits -- and builds one task group per feature spec. Adding a
-spec and running `make generate` therefore adds orchestration automatically,
+the compiler commits in the repository root -- and builds one task group per
+feature spec. Adding a spec and running `make generate` adds orchestration,
 and a DAG that disagrees with the models it runs is not representable.
 
 AS-OF DATE. Every task passes `data_interval_start` as target_date, so the run
@@ -12,9 +12,9 @@ source of truth: a manual run, a backfill and a scheduled run all take the same
 path and produce the same numbers.
 
 BACKFILL. The accumulator cannot be reconstructed for a date behind its
-watermark, so history is loaded with an explicit backfill (`make dbt-backfill`,
-which full-refreshes the partial layer from a start date) rather than by
-scheduler catchup. See FS_CATCHUP below.
+watermark, so history is loaded with an explicit backfill
+(`make -C showcase dbt-backfill`, which full-refreshes the partial layer from a
+start date) rather than by scheduler catchup. See FS_CATCHUP below.
 
 REVISION WINDOW. A partition is not final the day it is built. The partial layer
 keeps absorbing late-arriving events for `late_arrival_days`, so the marts for
@@ -47,7 +47,13 @@ from airflow.operators.bash import BashOperator
 from airflow.operators.empty import EmptyOperator
 from airflow.utils.task_group import TaskGroup
 
+# The generated dbt project and the registry are the compiler's output and live
+# in the repository root; the profile, the warehouse and the operational tools
+# are the showcase's and live beside this DAG. Keeping the two roots separate
+# here is what lets the same DAG point at a production deployment of the same
+# generated project by changing one environment variable.
 PROJECT_ROOT = Path(os.getenv("FS_PROJECT_ROOT", "/opt/feature-mart"))
+SHOWCASE_ROOT = Path(os.getenv("FS_SHOWCASE_ROOT", str(PROJECT_ROOT / "showcase")))
 DBT_DIR = PROJECT_ROOT / "transform"
 REGISTRY_DIR = PROJECT_ROOT / "registry"
 DBT = os.getenv("FS_DBT_BIN", "dbt")
@@ -56,9 +62,14 @@ DBT = os.getenv("FS_DBT_BIN", "dbt")
 TARGET_DATE = "{{ data_interval_start | ds }}"
 
 DBT_ENV = {
-    "DBT_PROFILES_DIR": str(DBT_DIR),
+    # The project is read-only generated output, so its run artefacts are
+    # directed into the showcase rather than written back beside the models.
+    "DBT_PROJECT_DIR": str(DBT_DIR),
+    "DBT_PROFILES_DIR": str(SHOWCASE_ROOT),
+    "DBT_TARGET_PATH": str(SHOWCASE_ROOT / "target"),
+    "DBT_LOG_PATH": str(SHOWCASE_ROOT / "logs"),
     "DBT_TARGET": os.getenv("DBT_TARGET", "seaweed"),
-    "DBT_DUCKDB_PATH": os.getenv("DBT_DUCKDB_PATH", str(DBT_DIR / "warehouse.duckdb")),
+    "DBT_DUCKDB_PATH": os.getenv("DBT_DUCKDB_PATH", str(SHOWCASE_ROOT / "warehouse.duckdb")),
     "S3_ENDPOINT": os.getenv("S3_ENDPOINT", "seaweedfs:8333"),
     "S3_ACCESS_KEY": os.getenv("S3_ACCESS_KEY", "featuremart"),
     "S3_SECRET_KEY": os.getenv("S3_SECRET_KEY", "featuremart"),
@@ -81,7 +92,7 @@ def dbt_task(task_id: str, command: str, select: str, **kwargs) -> BashOperator:
     return BashOperator(
         task_id=task_id,
         bash_command=(
-            f"cd {DBT_DIR} && "
+            f"cd {SHOWCASE_ROOT} && "
             f"{DBT} {command} "
             f"--select '{select}' "
             f'--vars \'{{"target_date": "{TARGET_DATE}"}}\' '
@@ -103,7 +114,7 @@ with DAG(
     # through history means asking it to build as-of dates that sit BEHIND the
     # watermark -- which the guard test correctly refuses, leaving a wall of red
     # tasks that no retry can clear. An initial load is a deliberate operation:
-    #     make dbt-backfill TARGET_DATE=<first day> BACKFILL_FROM=<start>
+    #     make -C showcase dbt-backfill TARGET_DATE=<first day> BACKFILL_FROM=<start>
     # then unpause from there. Set FS_CATCHUP=1 once the accumulator has been
     # reset for the window being replayed.
     catchup=os.getenv("FS_CATCHUP", "0") == "1",
@@ -133,7 +144,7 @@ with DAG(
     freshness = BashOperator(
         task_id="check_source_freshness",
         bash_command=(
-            f"cd {DBT_DIR} && {DBT} source freshness "
+            f"cd {SHOWCASE_ROOT} && {DBT} source freshness "
             f'--vars \'{{"target_date": "{TARGET_DATE}"}}\' --target $DBT_TARGET'
         ),
         env=DBT_ENV,
@@ -181,19 +192,19 @@ with DAG(
             # Which past partitions are still refreshable is not a fixed offset:
             # it is bounded below by the accumulator's watermark, because a date
             # the accumulator has already sealed past is FINAL and rebuilding it
-            # would fold future events into its all_time features. That rule and
-            # its rationale live in tools/revision_window.py, which resolves the
-            # dates against the warehouse at run time.
+            # would fold future events into its all_time features. The rule
+            # lives in generator.revision; showcase/tools/revision_window.py
+            # resolves it against this deployment's registry and warehouse.
             revise = None
             if late > 0:
                 revise = BashOperator(
                     task_id="refresh_revision_window",
                     bash_command=(
-                        f"set -euo pipefail; cd {PROJECT_ROOT} && "
-                        f"DATES=$(python tools/revision_window.py {name} {TARGET_DATE}) && "
+                        f"set -euo pipefail; cd {SHOWCASE_ROOT} && "
+                        f"DATES=$(python -m tools.revision_window {name} {TARGET_DATE}) && "
                         f'if [ -z "$DATES" ]; then '
                         f'echo "nothing refreshable: all earlier partitions are final"; '
-                        f"else cd {DBT_DIR} && for d in $DATES; do "
+                        f"else for d in $DATES; do "
                         f'echo "refreshing $d" && '
                         f"{DBT} build --select 'tag:{name}' "
                         f'--vars "{{target_date: $d}}" --target $DBT_TARGET; '
@@ -210,11 +221,11 @@ with DAG(
             offline = BashOperator(
                 task_id="publish_offline_store",
                 bash_command=(
-                    f"set -euo pipefail; cd {PROJECT_ROOT} && "
-                    f"DATES=$(python tools/revision_window.py {name} {TARGET_DATE} "
+                    f"set -euo pipefail; cd {SHOWCASE_ROOT} && "
+                    f"DATES=$(python -m tools.revision_window {name} {TARGET_DATE} "
                     f"--include-target) && "
                     f"for d in $DATES; do "
-                    f"python tools/publish_offline_store.py {name} $d; done"
+                    f"python -m tools.publish_offline_store {name} $d; done"
                 ),
                 env=DBT_ENV,
                 append_env=True,

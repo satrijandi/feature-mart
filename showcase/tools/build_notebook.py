@@ -7,9 +7,10 @@ diffable in review and can be regenerated and re-executed in CI.
 from __future__ import annotations
 
 import json
-from pathlib import Path
 
-OUT = Path("notebooks/01_validate_feature_store.ipynb")
+from tools.paths import SHOWCASE
+
+OUT = SHOWCASE / "notebooks" / "01_validate_feature_store.ipynb"
 
 
 _N = [0]
@@ -92,7 +93,10 @@ CELLS = [
         "asking the owning team.",
     ),
     code(
-        "REGISTRY_DIR = Path(os.getenv('FS_REGISTRY_DIR', '../registry'))",
+        "# The registry is the compiler's output and lives in the repository root,",
+        "# two levels up from this notebook. Overridable, because the copy that",
+        "# ships beside the data in the offline store is equally authoritative.",
+        "REGISTRY_DIR = Path(os.getenv('FS_REGISTRY_DIR', '../../registry'))",
         "reg = json.loads((REGISTRY_DIR / f'{FEATURE}.json').read_text())",
         "",
         "print(f\"feature set : {reg['feature_name']}\")",
