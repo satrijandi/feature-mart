@@ -9,8 +9,9 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
-env:
-  UV_SYSTEM_PYTHON: "1"
+# Deliberately no UV_SYSTEM_PYTHON here. It makes `uv pip install` skip the
+# .venv that `uv venv` just created and target the runner's system Python,
+# which is externally managed and refuses the install.
 
 jobs:
 
