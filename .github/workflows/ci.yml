@@ -155,7 +155,13 @@ jobs:
               for path, err in bag.import_errors.items():
                   print(f"{path}\n{err}")
               raise SystemExit(1)
-          dag = bag.get_dag("feature_store_daily")
+          # bag.dags, not bag.get_dag: the latter reads the serialised DAG out
+          # of the metadata database, which an import check has no reason to
+          # stand up. Parsing the file is the whole point here.
+          dag = bag.dags.get("feature_store_daily")
+          if dag is None:
+              print(f"feature_store_daily not found; parsed: {sorted(bag.dags)}")
+              raise SystemExit(1)
           print(f"feature_store_daily: {len(dag.tasks)} tasks")
           for t in sorted(t.task_id for t in dag.tasks):
               print(f"  {t}")
